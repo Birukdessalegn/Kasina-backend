@@ -567,15 +567,18 @@ const createOrder = async (order) => {
         // DETERMINE WHERE PRODUCT SHOULD GO
         // ========================================================
 
-        const categoryType = product.category_type?.toLowerCase();
+        const categoryType = (product.category_type || "").toLowerCase();
+        const menuType = (product.menu_type || "").toLowerCase();
 
+        const isFood = categoryType === "food" || menuType === "food";
+        const isDrink = categoryType === "beverage" || categoryType === "bar" || categoryType === "liquor" || menuType === "drink";
 
         // Kitchen Products
-        if (categoryType === "food") {
+        if (isFood) {
           kitchenItems.push(createdItem);
         }
         // Bar Products
-        else if (categoryType === "beverage" || categoryType === "bar") {
+        else if (isDrink) {
           barItems.push(createdItem);
         }
         else {
@@ -589,9 +592,9 @@ const createOrder = async (order) => {
         // WITH PARENT-PRODUCT PORTION CONVERSION (SHOTS / HALF BOTTLE)
         // ========================================================
         let targetDepartment = null;
-        if (categoryType === "food") {
+        if (isFood) {
           targetDepartment = "kitchen";
-        } else if (categoryType === "beverage" || categoryType === "bar") {
+        } else if (isDrink) {
           targetDepartment = "bar";
         }
 
@@ -1490,12 +1493,16 @@ const addOrderItems = async (orderId, newItems = [], user = null) => {
       );
       const createdItem = itemResult.rows[0];
 
-      const categoryType = product.category_type?.toLowerCase();
+      const categoryType = (product.category_type || "").toLowerCase();
+      const menuType = (product.menu_type || "").toLowerCase();
+      const isFood = categoryType === "food" || menuType === "food";
+      const isDrink = categoryType === "beverage" || categoryType === "bar" || categoryType === "liquor" || menuType === "drink";
+
       let targetDept = null;
-      if (categoryType === "food") {
+      if (isFood) {
         targetDept = "kitchen";
         kitchenItems.push(createdItem);
-      } else if (categoryType === "beverage" || categoryType === "bar") {
+      } else if (isDrink) {
         targetDept = "bar";
         barItems.push(createdItem);
       }
