@@ -258,10 +258,6 @@ const initializeDatabase = async () => {
     `);
 
     console.log("✅ Database schema initialized");
-
-    // Automatically seed sample data and grant public permissions
-    const seedDatabase = require("./seed");
-    await seedDatabase();
   } catch (error) {
     console.error("❌ Failed to initialize database schema");
     console.error(error);
