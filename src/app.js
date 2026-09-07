@@ -27,6 +27,8 @@ const app = express();
 
 // CORS configuration
 const allowedOrigins = [
+  "https://kasinahotel.ambbatech.com",
+  "http://kasinahotel.ambbatech.com",
   "https://theoak.ambbatech.com",
   "http://theoak.ambbatech.com",
   "http://localhost:5173",
