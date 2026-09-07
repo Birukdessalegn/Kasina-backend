@@ -84,4 +84,19 @@ app.get("/", (req, res) => {
   });
 });
 
+// One-click database seeder (safe with ON CONFLICT DO NOTHING)
+app.get("/api/seed-database", async (req, res) => {
+  try {
+    const seedDatabase = require("./database/seed");
+    await seedDatabase();
+    res.json({
+      success: true,
+      message: "✅ All hotel sample data (rooms, food, drinks, tables, shifts, suppliers, VIPs) seeded successfully!"
+    });
+  } catch (err) {
+    console.error("Seed route error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = app;
