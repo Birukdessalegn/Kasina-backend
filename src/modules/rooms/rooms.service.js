@@ -26,6 +26,8 @@ const getAllRooms = async ({ status, floor, typeId } = {}) => {
       res.guest_name,
       res.guest_phone,
       res.guest_id_number,
+      res.id_image_url,
+      res.special_requests,
       res.check_in_date,
       res.check_out_date,
       res.actual_check_in_at,

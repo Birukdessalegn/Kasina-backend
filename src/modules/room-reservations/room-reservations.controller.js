@@ -98,10 +98,42 @@ const cancelReservation = async (req, res) => {
   }
 };
 
+const updateReservation = async (req, res) => {
+  try {
+    const userId = req.user?.id || null;
+    const updated = await reservationsService.updateReservation(req.params.id, req.body, userId);
+    res.json({ success: true, data: updated, message: "Reservation updated successfully" });
+  } catch (error) {
+    console.error("Error updating reservation:", error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+const uploadGuestIdImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image file provided." });
+    }
+    const imageUrl = `/uploads/guest-ids/${req.file.filename}`;
+    const updated = await reservationsService.updateGuestIdImage(req.params.id, imageUrl);
+    res.json({
+      success: true,
+      data: updated,
+      imageUrl,
+      message: "Guest ID image uploaded successfully"
+    });
+  } catch (error) {
+    console.error("Error uploading guest ID image:", error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getReservations,
   getReservation,
   createReservation,
+  updateReservation,
+  uploadGuestIdImage,
   checkIn,
   checkOut,
   addPayment,

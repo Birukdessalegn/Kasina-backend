@@ -160,6 +160,7 @@ const createReservation = async (data, userId) => {
       guest_phone,
       guest_email,
       guest_id_number,
+      id_image_url,
       room_id,
       check_in_date,
       check_out_date,
@@ -219,11 +220,11 @@ const createReservation = async (data, userId) => {
     const insertResQuery = `
       INSERT INTO room_reservations (
         reservation_code, guest_name, guest_phone, guest_email, guest_id_number,
-        room_id, check_in_date, check_out_date, actual_check_in_at,
+        id_image_url, room_id, check_in_date, check_out_date, actual_check_in_at,
         adults, children, rate_per_night, total_nights, total_amount, paid_amount,
         payment_status, status, special_requests, created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *
     `;
     const { rows: resRows } = await client.query(insertResQuery, [
@@ -232,6 +233,7 @@ const createReservation = async (data, userId) => {
       guest_phone || null,
       guest_email || null,
       guest_id_number || null,
+      id_image_url || null,
       room_id,
       check_in_date,
       check_out_date,
@@ -483,10 +485,71 @@ const cancelReservation = async (id, reason, userId) => {
   }
 };
 
+/**
+ * Update reservation details (guest info, special requests, id_image_url)
+ */
+const updateReservation = async (id, data, userId) => {
+  const {
+    guest_name,
+    guest_phone,
+    guest_email,
+    guest_id_number,
+    special_requests,
+    id_image_url
+  } = data;
+
+  const res = await pool.query(
+    `UPDATE room_reservations
+     SET 
+       guest_name = COALESCE($1, guest_name),
+       guest_phone = COALESCE($2, guest_phone),
+       guest_email = COALESCE($3, guest_email),
+       guest_id_number = COALESCE($4, guest_id_number),
+       special_requests = COALESCE($5, special_requests),
+       id_image_url = COALESCE($6, id_image_url),
+       updated_at = CURRENT_TIMESTAMP
+     WHERE id = $7
+     RETURNING *`,
+    [
+      guest_name !== undefined ? guest_name.trim() : null,
+      guest_phone !== undefined ? guest_phone : null,
+      guest_email !== undefined ? guest_email : null,
+      guest_id_number !== undefined ? guest_id_number : null,
+      special_requests !== undefined ? special_requests : null,
+      id_image_url !== undefined ? id_image_url : null,
+      id
+    ]
+  );
+
+  if (res.rows.length === 0) {
+    throw new Error("Reservation not found.");
+  }
+  return res.rows[0];
+};
+
+/**
+ * Update specifically the Guest ID image
+ */
+const updateGuestIdImage = async (id, imageUrl) => {
+  const res = await pool.query(
+    `UPDATE room_reservations
+     SET id_image_url = $1, updated_at = CURRENT_TIMESTAMP
+     WHERE id = $2
+     RETURNING *`,
+    [imageUrl, id]
+  );
+  if (res.rows.length === 0) {
+    throw new Error("Reservation not found.");
+  }
+  return res.rows[0];
+};
+
 module.exports = {
   getAllReservations,
   getReservationById,
   createReservation,
+  updateReservation,
+  updateGuestIdImage,
   checkInReservation,
   addPayment,
   checkOutReservation,
