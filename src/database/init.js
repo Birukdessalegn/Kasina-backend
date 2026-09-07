@@ -46,9 +46,26 @@ const initializeDatabase = async () => {
         );
       ALTER TABLE products ADD COLUMN IF NOT EXISTS parent_product_id INTEGER REFERENCES products(id) ON DELETE SET NULL;
       ALTER TABLE products ADD COLUMN IF NOT EXISTS portion_ratio NUMERIC(10,4) DEFAULT 1.0000;
-      ALTER TABLE products ADD COLUMN IF NOT EXISTS serving_size VARCHAR(50) DEFAULT 'unit';
-      ALTER TABLE products ADD COLUMN IF NOT EXISTS shots_capacity INTEGER DEFAULT 30;
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS shots_capacity INTEGER DEFAULT 0;
       ALTER TABLE products ADD COLUMN IF NOT EXISTS is_shot_item BOOLEAN DEFAULT FALSE;
+      ALTER TABLE products ALTER COLUMN shots_capacity SET DEFAULT 0;
+
+      -- Reset shots_capacity on food items that accidentally inherited default 30
+      UPDATE products
+      SET shots_capacity = 0, is_shot_item = FALSE
+      WHERE is_shot_item IS NOT TRUE
+        AND (
+          LOWER(COALESCE(unit, '')) IN ('plate', 'portion', 'pcs', 'order', 'bowl', 'slice', 'serving')
+          OR LOWER(COALESCE(menu_type, '')) = 'food'
+          OR category_id IN (
+            SELECT id FROM product_categories 
+            WHERE LOWER(type) = 'food' 
+               OR LOWER(name) LIKE '%dish%' 
+               OR LOWER(name) LIKE '%food%' 
+               OR LOWER(name) LIKE '%grill%'
+               OR LOWER(name) LIKE '%kitchen%'
+          )
+        );
 
       ALTER TABLE cashier_shifts ADD COLUMN IF NOT EXISTS cashier_name VARCHAR(150);
       ALTER TABLE cashier_shifts ADD COLUMN IF NOT EXISTS opening_cash NUMERIC(12,2) DEFAULT 0.00;
