@@ -220,6 +220,7 @@ const initializeDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_room_payments_res ON room_payments(reservation_id);
 
       ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_url TEXT;
+      ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS vip_customer_id INTEGER REFERENCES vip_customers(id) ON DELETE SET NULL;
     `);
 
     // Auto-link missing user_id on employees table

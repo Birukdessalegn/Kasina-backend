@@ -55,17 +55,21 @@ const isRoomAvailable = async (roomId, checkIn, checkOut, excludeReservationId =
 /**
  * Get all room reservations with filters
  */
-const getAllReservations = async ({ status, search, startDate, endDate, roomId, limit = 50, offset = 0 } = {}) => {
+const getAllReservations = async ({ status, search, startDate, endDate, roomId, limit = 100, offset = 0 } = {}) => {
   let query = `
     SELECT 
       rr.*,
       r.room_number,
       r.floor,
       rt.name AS room_type_name,
+      vc.name AS vip_name,
+      vc.tier AS vip_tier,
+      vc.company AS vip_company,
       u.username AS created_by_username
     FROM room_reservations rr
     JOIN rooms r ON rr.room_id = r.id
     JOIN room_types rt ON r.room_type_id = rt.id
+    LEFT JOIN vip_customers vc ON rr.vip_customer_id = vc.id
     LEFT JOIN users u ON rr.created_by = u.id
     WHERE 1=1
   `;
@@ -99,6 +103,8 @@ const getAllReservations = async ({ status, search, startDate, endDate, roomId, 
       OR rr.reservation_code ILIKE $${params.length}
       OR rr.guest_id_number ILIKE $${params.length}
       OR r.room_number ILIKE $${params.length}
+      OR vc.name ILIKE $${params.length}
+      OR vc.company ILIKE $${params.length}
     )`;
   }
 
@@ -120,10 +126,14 @@ const getReservationById = async (id) => {
       r.floor,
       rt.name AS room_type_name,
       rt.amenities,
+      vc.name AS vip_name,
+      vc.tier AS vip_tier,
+      vc.company AS vip_company,
       u.username AS created_by_username
     FROM room_reservations rr
     JOIN rooms r ON rr.room_id = r.id
     JOIN room_types rt ON r.room_type_id = rt.id
+    LEFT JOIN vip_customers vc ON rr.vip_customer_id = vc.id
     LEFT JOIN users u ON rr.created_by = u.id
     WHERE rr.id = $1
   `;
@@ -161,6 +171,7 @@ const createReservation = async (data, userId) => {
       guest_email,
       guest_id_number,
       id_image_url,
+      vip_customer_id,
       room_id,
       check_in_date,
       check_out_date,
@@ -220,11 +231,11 @@ const createReservation = async (data, userId) => {
     const insertResQuery = `
       INSERT INTO room_reservations (
         reservation_code, guest_name, guest_phone, guest_email, guest_id_number,
-        id_image_url, room_id, check_in_date, check_out_date, actual_check_in_at,
+        id_image_url, vip_customer_id, room_id, check_in_date, check_out_date, actual_check_in_at,
         adults, children, rate_per_night, total_nights, total_amount, paid_amount,
         payment_status, status, special_requests, created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
       RETURNING *
     `;
     const { rows: resRows } = await client.query(insertResQuery, [
@@ -234,6 +245,7 @@ const createReservation = async (data, userId) => {
       guest_email || null,
       guest_id_number || null,
       id_image_url || null,
+      vip_customer_id || null,
       room_id,
       check_in_date,
       check_out_date,
@@ -544,6 +556,100 @@ const updateGuestIdImage = async (id, imageUrl) => {
   return res.rows[0];
 };
 
+/**
+ * Front Desk Performance & Revenue Reports
+ */
+const getReservationReports = async ({ startDate, endDate } = {}) => {
+  const whereClauses = [];
+  const params = [];
+
+  if (startDate) {
+    params.push(startDate);
+    whereClauses.push(`rr.check_in_date >= $${params.length}`);
+  }
+  if (endDate) {
+    params.push(endDate);
+    whereClauses.push(`rr.check_out_date <= $${params.length}`);
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+  // 1. Overall Metrics
+  const metricsQuery = `
+    SELECT
+      COUNT(*)::int AS total_reservations,
+      COUNT(CASE WHEN rr.status = 'checked_in' THEN 1 END)::int AS active_stays,
+      COUNT(CASE WHEN rr.status = 'checked_out' THEN 1 END)::int AS completed_stays,
+      COUNT(CASE WHEN rr.status = 'confirmed' THEN 1 END)::int AS upcoming_reservations,
+      COUNT(CASE WHEN rr.status = 'cancelled' THEN 1 END)::int AS cancelled_stays,
+      COALESCE(SUM(CASE WHEN rr.status != 'cancelled' THEN rr.total_amount ELSE 0 END), 0)::numeric(12,2) AS total_revenue,
+      COALESCE(SUM(CASE WHEN rr.status != 'cancelled' THEN rr.paid_amount ELSE 0 END), 0)::numeric(12,2) AS collected_revenue,
+      COALESCE(SUM(CASE WHEN rr.status != 'cancelled' THEN (rr.total_amount - rr.paid_amount) ELSE 0 END), 0)::numeric(12,2) AS pending_revenue,
+      COALESCE(SUM(CASE WHEN rr.status != 'cancelled' THEN rr.total_nights ELSE 0 END), 0)::int AS total_nights_sold,
+      COALESCE(AVG(CASE WHEN rr.status != 'cancelled' THEN rr.rate_per_night END), 0)::numeric(12,2) AS average_daily_rate,
+      COALESCE(AVG(CASE WHEN rr.status != 'cancelled' THEN rr.total_nights END), 0)::numeric(5,1) AS average_stay_duration
+    FROM room_reservations rr
+    ${whereSql}
+  `;
+  const { rows: metricRows } = await pool.query(metricsQuery, params);
+  const metrics = metricRows[0];
+
+  // 2. Room Count for Occupancy Rate Calculation
+  const { rows: roomRows } = await pool.query("SELECT COUNT(*)::int AS count FROM rooms");
+  const totalRooms = roomRows[0].count || 1;
+  const daysInPeriod = startDate && endDate
+    ? Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)))
+    : 30;
+  const maxRoomNights = totalRooms * daysInPeriod;
+  const occupancyRate = maxRoomNights > 0
+    ? Math.min(100, Math.round(((metrics.total_nights_sold || 0) / maxRoomNights) * 100))
+    : 0;
+  metrics.total_rooms = totalRooms;
+  metrics.occupancy_rate = occupancyRate;
+  metrics.rev_par = (Number(metrics.average_daily_rate || 0) * (occupancyRate / 100)).toFixed(2);
+
+  // 3. Category Breakdown
+  const categoryQuery = `
+    SELECT
+      rt.id AS room_type_id,
+      rt.name AS room_type_name,
+      rt.base_rate,
+      COUNT(rr.id)::int AS total_bookings,
+      COALESCE(SUM(rr.total_nights), 0)::int AS nights_sold,
+      COALESCE(SUM(rr.total_amount), 0)::numeric(12,2) AS total_revenue
+    FROM room_types rt
+    LEFT JOIN rooms r ON rt.id = r.room_type_id
+    LEFT JOIN room_reservations rr ON r.id = rr.room_id AND rr.status != 'cancelled'
+    GROUP BY rt.id, rt.name, rt.base_rate
+    ORDER BY total_revenue DESC
+  `;
+  const { rows: categoryStats } = await pool.query(categoryQuery);
+
+  // 4. Payment Method Breakdown
+  const paymentQuery = `
+    SELECT
+      rp.payment_method,
+      COUNT(rp.id)::int AS transaction_count,
+      COALESCE(SUM(rp.amount), 0)::numeric(12,2) AS total_amount
+    FROM room_payments rp
+    JOIN room_reservations rr ON rp.reservation_id = rr.id
+    ${whereSql}
+    GROUP BY rp.payment_method
+    ORDER BY total_amount DESC
+  `;
+  const { rows: paymentStats } = await pool.query(paymentQuery, params);
+
+  return {
+    metrics,
+    categoryStats,
+    paymentStats,
+    period: {
+      startDate: startDate || null,
+      endDate: endDate || null
+    }
+  };
+};
+
 module.exports = {
   getAllReservations,
   getReservationById,
@@ -554,5 +660,6 @@ module.exports = {
   addPayment,
   checkOutReservation,
   cancelReservation,
-  isRoomAvailable
+  isRoomAvailable,
+  getReservationReports
 };

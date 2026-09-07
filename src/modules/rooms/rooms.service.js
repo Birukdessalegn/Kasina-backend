@@ -34,7 +34,11 @@ const getAllRooms = async ({ status, floor, typeId } = {}) => {
       res.total_amount,
       res.paid_amount,
       res.payment_status,
-      res.status AS reservation_status
+      res.status AS reservation_status,
+      res.vip_customer_id,
+      vc.name AS vip_name,
+      vc.tier AS vip_tier,
+      vc.company AS vip_company
     FROM rooms r
     JOIN room_types rt ON r.room_type_id = rt.id
     LEFT JOIN LATERAL (
@@ -47,6 +51,7 @@ const getAllRooms = async ({ status, floor, typeId } = {}) => {
         rr.check_in_date ASC
       LIMIT 1
     ) res ON TRUE
+    LEFT JOIN vip_customers vc ON res.vip_customer_id = vc.id
     WHERE 1=1
   `;
 

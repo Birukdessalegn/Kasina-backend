@@ -128,6 +128,17 @@ const uploadGuestIdImage = async (req, res) => {
   }
 };
 
+const getReports = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const reports = await reservationsService.getReservationReports({ startDate, endDate });
+    res.json({ success: true, data: reports });
+  } catch (error) {
+    console.error("Error generating reservation reports:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getReservations,
   getReservation,
@@ -138,4 +149,5 @@ module.exports = {
   checkOut,
   addPayment,
   cancelReservation,
+  getReports,
 };

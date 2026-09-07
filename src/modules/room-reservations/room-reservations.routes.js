@@ -13,12 +13,14 @@ const {
   checkOut,
   addPayment,
   cancelReservation,
+  getReports,
 } = require("./room-reservations.controller");
 
 router.use(authenticate);
 router.use(authorize("admin", "manager", "receptionist"));
 
 router.get("/", getReservations);
+router.get("/reports/summary", getReports);
 router.get("/:id", getReservation);
 router.post("/", createReservation);
 router.put("/:id", updateReservation);
