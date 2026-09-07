@@ -255,6 +255,49 @@ const initializeDatabase = async () => {
       END $$;
     `);
 
+    // Auto-create default admin user (natnael / nati@123) if not present
+    await pool.query(`
+      DO $$
+      DECLARE
+        v_admin_role_id INTEGER;
+        v_dept_id INTEGER;
+        v_user_id UUID;
+      BEGIN
+        SELECT id INTO v_admin_role_id FROM roles WHERE LOWER(name) = 'admin' LIMIT 1;
+        SELECT id INTO v_dept_id FROM departments WHERE LOWER(name) LIKE '%management%' LIMIT 1;
+
+        IF NOT EXISTS (SELECT 1 FROM users WHERE LOWER(username) = 'natnael') THEN
+          INSERT INTO users (id, username, email, password_hash, role_id, status)
+          VALUES (
+            gen_random_uuid(),
+            'natnael',
+            'natnael@kasinahotel.com',
+            '$2b$10$medmKB9BJRXREQu6e09FBuGp2Uzbuip.fERIMUua.tS.475qBcmjq',
+            v_admin_role_id,
+            'active'
+          )
+          RETURNING id INTO v_user_id;
+        ELSE
+          SELECT id INTO v_user_id FROM users WHERE LOWER(username) = 'natnael' LIMIT 1;
+        END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM employees WHERE LOWER(employee_code) = 'emp-admin-001') THEN
+          INSERT INTO employees (employee_code, first_name, last_name, phone, email, role_id, department_id, user_id, status)
+          VALUES (
+            'EMP-ADMIN-001',
+            'Natnael',
+            'Administrator',
+            '+251911000000',
+            'natnael@kasinahotel.com',
+            v_admin_role_id,
+            v_dept_id,
+            v_user_id,
+            'active'
+          );
+        END IF;
+      END $$;
+    `);
+
     console.log("✅ Database schema initialized");
   } catch (error) {
     console.error("❌ Failed to initialize database schema");
