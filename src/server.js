@@ -14,12 +14,19 @@ const startServer = async () => {
 
     await initializeDatabase();
 
-    // Bind to "0.0.0.0" so mobile devices on Wi-Fi can connect
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(
-        `🚀 Kasina Hotel Backend running on port ${PORT} (Network accessible)`
-      );
-    });
+    // Check if running under Phusion Passenger (socket path) or standard port
+    if (isNaN(PORT)) {
+      app.listen(PORT, () => {
+        console.log(`🚀 Kasina Hotel Backend running on Passenger socket ${PORT}`);
+      });
+    } else {
+      // Bind to "0.0.0.0" so mobile devices and network can connect
+      app.listen(Number(PORT), "0.0.0.0", () => {
+        console.log(
+          `🚀 Kasina Hotel Backend running on port ${PORT} (Network accessible)`
+        );
+      });
+    }
   } catch (error) {
     console.error("❌ Failed to start Kasina Hotel backend");
     console.error(error);
