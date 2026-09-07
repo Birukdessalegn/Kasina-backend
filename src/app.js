@@ -29,11 +29,8 @@ const app = express();
 const allowedOrigins = [
   "https://kasinahotel.ambbatech.com",
   "http://kasinahotel.ambbatech.com",
-  "https://theoak.ambbatech.com",
-  "http://theoak.ambbatech.com",
   "http://localhost:5173",
-  "http://localhost:3000",
-  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+  "http://localhost:3000"
 ];
 
 const corsOptions = {
