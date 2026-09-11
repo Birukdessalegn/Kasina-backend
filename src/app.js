@@ -32,25 +32,56 @@ const app = express();
 const allowedOrigins = [
   "https://kasinahotel.ambbatech.com",
   "http://kasinahotel.ambbatech.com",
+  "https://kasinahotelapi.ambbatech.com",
+  "http://kasinahotelapi.ambbatech.com",
   "http://localhost:5173",
   "http://localhost:3000"
 ];
 
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (origin.endsWith("ambbatech.com")) return true;
+  if (origin.includes("localhost") || origin.includes("127.0.0.1")) return true;
+  return false;
+};
+
+// Global CORS headers + Immediate preflight OPTIONS responder
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
+});
+
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (curl, mobile apps, server-to-server)
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
     return callback(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
   optionsSuccessStatus: 200
 };
 
-// Apply CORS middleware (handles regular & preflight requests)
+// Apply CORS middleware
 app.use(cors(corsOptions));
 
 // Body Parsers & Static Files
