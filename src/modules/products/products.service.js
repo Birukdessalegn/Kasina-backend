@@ -22,6 +22,9 @@ const getAllProducts = async () => {
       p.serving_size,
       p.shots_capacity,
       p.is_shot_item,
+      p.preparation_outlet_id,
+      out.name AS preparation_outlet_name,
+      out.code AS preparation_outlet_code,
       parent_p.name AS parent_product_name,
       p.created_at,
       p.updated_at,
@@ -37,6 +40,9 @@ const getAllProducts = async () => {
 
     LEFT JOIN products parent_p
       ON p.parent_product_id = parent_p.id
+
+    LEFT JOIN outlets out
+      ON p.preparation_outlet_id = out.id
 
     ORDER BY p.created_at DESC
   `);
@@ -68,6 +74,9 @@ const getProductById = async (id) => {
       p.serving_size,
       p.shots_capacity,
       p.is_shot_item,
+      p.preparation_outlet_id,
+      out.name AS preparation_outlet_name,
+      out.code AS preparation_outlet_code,
       parent_p.name AS parent_product_name,
       p.created_at,
       p.updated_at,
@@ -83,6 +92,9 @@ const getProductById = async (id) => {
 
     LEFT JOIN products parent_p
       ON p.parent_product_id = parent_p.id
+
+    LEFT JOIN outlets out
+      ON p.preparation_outlet_id = out.id
 
     WHERE p.id = $1
     `,
@@ -116,6 +128,7 @@ const createProduct = async (data) => {
 
   const shotsCapacity = data.shotsCapacity !== undefined ? data.shotsCapacity : data.shots_capacity;
   const isShotItem = data.isShotItem !== undefined ? data.isShotItem : data.is_shot_item;
+  const preparationOutletId = data.preparationOutletId || data.preparation_outlet_id || null;
 
   const result = await pool.query(
     `
@@ -137,7 +150,8 @@ const createProduct = async (data) => {
       portion_ratio,
       serving_size,
       shots_capacity,
-      is_shot_item
+      is_shot_item,
+      preparation_outlet_id
     )
     VALUES (
       $1, $2, $3, $4, $5,
@@ -150,7 +164,8 @@ const createProduct = async (data) => {
       COALESCE($15, 1.0000),
       COALESCE($16, 'unit'),
       COALESCE($17, 30),
-      COALESCE($18, FALSE)
+      COALESCE($18, FALSE),
+      $19
     )
     RETURNING *
     `,
@@ -173,6 +188,7 @@ const createProduct = async (data) => {
       servingSize || "unit",
       shotsCapacity !== undefined && shotsCapacity !== null && shotsCapacity !== "" ? parseInt(shotsCapacity, 10) : 30,
       isShotItem !== undefined && isShotItem !== null ? (isShotItem === true || isShotItem === "true" || isShotItem === 1 || isShotItem === "1") : false,
+      preparationOutletId,
     ]
   );
 
@@ -203,6 +219,7 @@ const updateProduct = async (id, data) => {
 
   const shotsCapacity = data.shotsCapacity !== undefined ? data.shotsCapacity : data.shots_capacity;
   const isShotItem = data.isShotItem !== undefined ? data.isShotItem : data.is_shot_item;
+  const prepOutletVal = data.preparationOutletId !== undefined ? data.preparationOutletId : (data.preparation_outlet_id !== undefined ? data.preparation_outlet_id : null);
 
   const result = await pool.query(
     `
@@ -226,8 +243,9 @@ const updateProduct = async (id, data) => {
       serving_size = COALESCE($16, serving_size),
       shots_capacity = COALESCE($17, shots_capacity),
       is_shot_item = COALESCE($18, is_shot_item),
+      preparation_outlet_id = CASE WHEN $19::text = 'null' THEN NULL WHEN $19 IS NOT NULL THEN $19::integer ELSE preparation_outlet_id END,
       updated_at = CURRENT_TIMESTAMP
-    WHERE id = $19
+    WHERE id = $20
     RETURNING *
     `,
     [
@@ -248,7 +266,8 @@ const updateProduct = async (id, data) => {
       portionRatio !== undefined ? Number(portionRatio) : null,
       servingSize !== undefined ? servingSize : null,
       shotsCapacity !== undefined && shotsCapacity !== null && shotsCapacity !== "" ? parseInt(shotsCapacity, 10) : null,
-      isShotItem !== undefined && isShotItem !== null ? (isShotItem === true || isShotItem === "true" || isShotItem === 1 || isShotItem === "1") : null,
+      isShotItem !== undefined ? (isShotItem === true || isShotItem === "true" || isShotItem === 1 || isShotItem === "1") : null,
+      prepOutletVal,
       id,
     ]
   );
@@ -413,6 +432,17 @@ const updateProductMenu = async (id, data) => {
 };
 
 
+// Outlets for products
+const getOutlets = async () => {
+  const result = await pool.query(`
+    SELECT id, name, code, type
+    FROM outlets
+    WHERE type IN ('pos', 'kitchen', 'bar')
+    ORDER BY id ASC
+  `);
+  return result.rows;
+};
+
 module.exports = {
   getAllProducts,
   getProductById,
@@ -421,6 +451,7 @@ module.exports = {
   deleteProduct,
   getCategories,
   createCategory,
+  getOutlets,
 
   getMenu,
   updateProductMenu,

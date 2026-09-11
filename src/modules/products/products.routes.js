@@ -17,6 +17,12 @@ router.post(
   productsController.createCategory
 );
 
+// Outlets for products / menu routing
+router.get(
+  "/outlets",
+  productsController.getOutlets
+);
+
 
 // Menu
 router.get(

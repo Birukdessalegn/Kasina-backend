@@ -291,6 +291,24 @@ const updateProductMenu = async (req, res) => {
 };
 
 
+// GET /api/products/outlets
+const getOutlets = async (req, res) => {
+  try {
+    const outlets = await productsService.getOutlets();
+    res.json({
+      success: true,
+      count: outlets.length,
+      outlets,
+    });
+  } catch (error) {
+    console.error("Get product outlets error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch outlets",
+    });
+  }
+};
+
 module.exports = {
   getProducts,
   getProduct,
@@ -299,6 +317,7 @@ module.exports = {
   deleteProduct,
   getCategories,
   createCategory,
+  getOutlets,
 
   getMenu,
   updateProductMenu,
