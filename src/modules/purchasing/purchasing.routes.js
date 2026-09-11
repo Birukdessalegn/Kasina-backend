@@ -6,6 +6,20 @@ const purchasingController =
   require("./purchasing.controller");
 
 
+const authenticate = require("../../middleware/auth.middleware");
+
+// Require authentication for purchasing routes
+router.use(authenticate);
+
+// ============================================================
+// PURCHASE REQUESTS
+// ============================================================
+
+router.get("/requests", purchasingController.getPurchaseRequests);
+router.get("/requests/:id", purchasingController.getPurchaseRequest);
+router.post("/requests", purchasingController.createPurchaseRequest);
+router.patch("/requests/:id/review", purchasingController.reviewPurchaseRequest);
+
 // ============================================================
 // SUPPLIERS
 // ============================================================

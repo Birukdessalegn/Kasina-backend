@@ -7,7 +7,14 @@ const kitchenService = require("./kitchen.service");
 
 const getKitchenOrders = async (req, res) => {
   try {
-    const orders = await kitchenService.getAllKitchenOrders();
+    let outletFilter = req.query.kitchen_outlet_id || req.query.outlet_code || req.query.outletId || null;
+    
+    // If logged in user is cafe_chef and no explicit filter provided, default to CAFE_KITCHEN
+    if (!outletFilter && req.user?.role === "cafe_chef") {
+      outletFilter = "CAFE_KITCHEN";
+    }
+
+    const orders = await kitchenService.getAllKitchenOrders(outletFilter);
 
     res.json({
       success: true,

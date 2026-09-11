@@ -128,10 +128,13 @@ const getCurrentShift = async (cashierId) => {
     `
     SELECT 
       cs.*,
+      o.name AS outlet_name,
+      o.code AS outlet_code,
       COALESCE(e.first_name || ' ' || e.last_name, cs.cashier_name, u.username) AS cashier_display_name
     FROM cashier_shifts cs
     LEFT JOIN users u ON cs.cashier_id = u.id
     LEFT JOIN employees e ON e.user_id = u.id
+    LEFT JOIN outlets o ON cs.outlet_id = o.id
     WHERE cs.cashier_id = $1 AND cs.status = 'open'
     ORDER BY cs.start_time DESC
     LIMIT 1
@@ -147,10 +150,13 @@ const getCurrentShift = async (cashierId) => {
       `
       SELECT 
         cs.*,
+        o.name AS outlet_name,
+        o.code AS outlet_code,
         COALESCE(e.first_name || ' ' || e.last_name, cs.cashier_name, u.username) AS cashier_display_name
       FROM cashier_shifts cs
       LEFT JOIN users u ON cs.cashier_id = u.id
       LEFT JOIN employees e ON e.user_id = u.id
+      LEFT JOIN outlets o ON cs.outlet_id = o.id
       WHERE cs.cashier_id = $1 AND cs.start_time >= CURRENT_DATE
       ORDER BY cs.start_time DESC
       LIMIT 1
@@ -201,7 +207,7 @@ const getCurrentShift = async (cashierId) => {
 // START SHIFT
 // ============================================================
 const startShift = async (cashierId, shiftData = {}) => {
-  const { opening_cash, openingCash, terminal_id, terminalId } = shiftData;
+  const { opening_cash, openingCash, terminal_id, terminalId, outlet_id, outletId } = shiftData;
   const initialCash = parseFloat(opening_cash !== undefined ? opening_cash : openingCash || 0.0);
   const terminal = terminal_id !== undefined ? terminal_id : terminalId || 1;
 
@@ -215,10 +221,12 @@ const startShift = async (cashierId, shiftData = {}) => {
     throw new Error("You already have an active open shift. Please close it before starting a new one.");
   }
 
-  // 2. Fetch cashier display name
+  // 2. Fetch cashier display name & default outlet
   const userResult = await pool.query(
     `
-    SELECT COALESCE(e.first_name || ' ' || e.last_name, u.username) AS display_name
+    SELECT 
+      COALESCE(e.first_name || ' ' || e.last_name, u.username) AS display_name,
+      COALESCE(e.outlet_id, u.outlet_id) AS user_outlet_id
     FROM users u
     LEFT JOIN employees e ON e.user_id = u.id
     WHERE u.id = $1
@@ -227,6 +235,12 @@ const startShift = async (cashierId, shiftData = {}) => {
   );
 
   const cashierName = userResult.rows[0]?.display_name || "Cashier";
+  let resolvedOutletId = outlet_id || outletId || userResult.rows[0]?.user_outlet_id;
+
+  if (!resolvedOutletId) {
+    const defOut = await pool.query("SELECT id FROM outlets WHERE code = 'RESTAURANT' LIMIT 1");
+    if (defOut.rows.length > 0) resolvedOutletId = defOut.rows[0].id;
+  }
 
   // 3. Insert new shift
   const insertResult = await pool.query(
@@ -235,6 +249,7 @@ const startShift = async (cashierId, shiftData = {}) => {
       cashier_id,
       cashier_name,
       terminal_id,
+      outlet_id,
       start_time,
       opening_cash,
       expected_cash,
@@ -251,10 +266,10 @@ const startShift = async (cashierId, shiftData = {}) => {
       status,
       updated_at
     )
-    VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'open', CURRENT_TIMESTAMP)
+    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'open', CURRENT_TIMESTAMP)
     RETURNING *
     `,
-    [cashierId, cashierName, terminal, initialCash]
+    [cashierId, cashierName, terminal, resolvedOutletId, initialCash]
   );
 
   const newShift = insertResult.rows[0];

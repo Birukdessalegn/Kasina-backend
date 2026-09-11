@@ -6,7 +6,8 @@ const tableService = require("./table.service");
 
 const getTables = async (req, res) => {
   try {
-    const tables = await tableService.getAllTables();
+    const outletId = req.query.outlet_id || req.query.outletId || (req.user && req.user.outlet_id);
+    const tables = await tableService.getAllTables({ outletId });
 
     res.json({
       success: true,

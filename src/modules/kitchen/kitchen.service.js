@@ -5,8 +5,13 @@ const pool = require("../../config/database");
 // GET ALL KITCHEN ORDERS
 // ============================================================
 
-const getAllKitchenOrders = async () => {
-  const result = await pool.query(`
+const getAllKitchenOrders = async (kitchenOutlet = null) => {
+  let targetOutlet = kitchenOutlet;
+  if (kitchenOutlet && typeof kitchenOutlet === "object") {
+    targetOutlet = kitchenOutlet.kitchen_outlet_id || kitchenOutlet.outlet_id || kitchenOutlet.outletId || null;
+  }
+
+  let query = `
     SELECT
       ko.id,
       ko.order_id,
@@ -16,11 +21,17 @@ const getAllKitchenOrders = async () => {
       ko.chef_id,
       ko.notes,
       ko.created_at,
+      ko.kitchen_outlet_id,
+      ko_out.name AS kitchen_outlet_name,
+      ko_out.code AS kitchen_outlet_code,
 
       o.order_number,
-o.table_id,
-o.order_type,
-o.payment_status,
+      o.table_id,
+      o.order_type,
+      o.payment_status,
+      o.outlet_id,
+      o_out.name AS outlet_name,
+      o_out.code AS outlet_code,
 
       rt.table_number,
 
@@ -32,14 +43,33 @@ o.payment_status,
     JOIN orders o
       ON ko.order_id = o.id
 
+    LEFT JOIN outlets ko_out
+      ON ko.kitchen_outlet_id = ko_out.id
+
+    LEFT JOIN outlets o_out
+      ON o.outlet_id = o_out.id
+
     LEFT JOIN restaurant_tables rt
       ON o.table_id = rt.id
 
     LEFT JOIN employees e
       ON ko.chef_id = e.id
+  `;
 
-    ORDER BY ko.created_at DESC
-  `);
+  const params = [];
+  if (targetOutlet) {
+    if (!isNaN(Number(targetOutlet))) {
+      params.push(Number(targetOutlet));
+      query += ` WHERE ko.kitchen_outlet_id = $1`;
+    } else {
+      params.push(String(targetOutlet).toUpperCase());
+      query += ` WHERE UPPER(ko_out.code) = $1`;
+    }
+  }
+
+  query += ` ORDER BY ko.created_at DESC`;
+
+  const result = await pool.query(query, params);
 
   const orders = result.rows;
 

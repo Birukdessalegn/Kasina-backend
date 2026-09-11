@@ -15,12 +15,14 @@ const generateTransferNumber = () => {
 const createTransfer = async ({
   fromLocation = "main",
   toLocation,
+  fromOutletId,
+  toOutletId,
   items,
   notes,
   userId,
 }) => {
-  if (!toLocation || !["bar", "kitchen"].includes(toLocation.toLowerCase())) {
-    throw new Error("Invalid destination location. Must be 'bar' or 'kitchen'.");
+  if (!toLocation && !toOutletId) {
+    throw new Error("Destination location or outlet is required.");
   }
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -34,6 +36,29 @@ const createTransfer = async ({
 
     const transferNumber = generateTransferNumber();
 
+    // Resolve outlet IDs
+    let resolvedFromOutletId = fromOutletId;
+    if (!resolvedFromOutletId) {
+      const cRes = await client.query("SELECT id FROM outlets WHERE code = 'CENTRAL_STORE' LIMIT 1");
+      if (cRes.rows.length > 0) resolvedFromOutletId = cRes.rows[0].id;
+    }
+
+    let resolvedToOutletId = toOutletId;
+    let targetDeptString = String(toLocation || "").toLowerCase();
+    if (!resolvedToOutletId && toLocation) {
+      const oRes = await client.query(
+        "SELECT id, code, name FROM outlets WHERE LOWER(code) = LOWER($1) OR LOWER(name) = LOWER($1) LIMIT 1",
+        [toLocation.trim()]
+      );
+      if (oRes.rows.length > 0) {
+        resolvedToOutletId = oRes.rows[0].id;
+        targetDeptString = oRes.rows[0].code.toLowerCase();
+      } else if (targetDeptString === "kitchen") {
+        const kRes = await client.query("SELECT id FROM outlets WHERE code = 'RESTAURANT_KITCHEN' LIMIT 1");
+        if (kRes.rows.length > 0) resolvedToOutletId = kRes.rows[0].id;
+      }
+    }
+
     // 1. Create transfer record
     const transferResult = await client.query(
       `
@@ -41,17 +66,21 @@ const createTransfer = async ({
         transfer_number,
         from_location,
         to_location,
+        from_outlet_id,
+        to_outlet_id,
         status,
         dispatched_by,
         notes
       )
-      VALUES ($1, $2, $3, 'completed', $4, $5)
+      VALUES ($1, $2, $3, $4, $5, 'completed', $6, $7)
       RETURNING *
       `,
       [
         transferNumber,
         fromLocation.toLowerCase(),
-        toLocation.toLowerCase(),
+        targetDeptString,
+        resolvedFromOutletId,
+        resolvedToOutletId,
         userId || null,
         notes || null,
       ]
@@ -152,24 +181,27 @@ const createTransfer = async ({
         }
       }
 
-      // Add to Department Inventory (Bar or Kitchen)
+      // Add to Department/Outlet Inventory
       await client.query(
         `
         INSERT INTO department_inventory (
           department,
+          outlet_id,
           product_id,
           quantity,
           unit,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
         ON CONFLICT (department, product_id)
         DO UPDATE SET
           quantity = department_inventory.quantity + EXCLUDED.quantity,
+          outlet_id = COALESCE(department_inventory.outlet_id, EXCLUDED.outlet_id),
           updated_at = CURRENT_TIMESTAMP
         `,
         [
-          toLocation.toLowerCase(),
+          targetDeptString,
+          resolvedToOutletId,
           productId,
           quantity,
           product.unit || "pcs",
@@ -181,6 +213,7 @@ const createTransfer = async ({
         `
         INSERT INTO department_inventory_transactions (
           department,
+          outlet_id,
           product_id,
           transaction_type,
           quantity,
@@ -189,10 +222,11 @@ const createTransfer = async ({
           notes,
           created_by
         )
-        VALUES ($1, $2, 'transfer_in', $3, 'transfer', $4, $5, $6)
+        VALUES ($1, $2, $3, 'transfer_in', $4, 'transfer', $5, $6, $7)
         `,
         [
-          toLocation.toLowerCase(),
+          targetDeptString,
+          resolvedToOutletId,
           productId,
           quantity,
           transfer.id,

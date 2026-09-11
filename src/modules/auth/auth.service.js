@@ -42,12 +42,31 @@ const loginUser = async (username, password) => {
       u.password_hash,
       u.role_id,
       u.status,
+      u.outlet_id AS user_outlet_id,
       r.name AS role,
       e.id AS employee_id,
-      e.status AS employee_status
+      e.employee_code,
+      e.first_name,
+      e.last_name,
+      e.status AS employee_status,
+      e.department_id,
+      d.name AS department_name,
+      d.code AS department_code,
+      COALESCE(e.outlet_id, u.outlet_id) AS outlet_id,
+      o.name AS outlet_name,
+      o.code AS outlet_code,
+      o.type AS outlet_type,
+      e.position_id,
+      pos.title AS position_title,
+      e.reports_to_employee_id,
+      CONCAT(sup.first_name, ' ', sup.last_name) AS reports_to_name
      FROM users u
      LEFT JOIN roles r ON u.role_id = r.id
      LEFT JOIN employees e ON e.user_id = u.id
+     LEFT JOIN departments d ON e.department_id = d.id
+     LEFT JOIN outlets o ON o.id = COALESCE(e.outlet_id, u.outlet_id)
+     LEFT JOIN positions pos ON e.position_id = pos.id
+     LEFT JOIN employees sup ON e.reports_to_employee_id = sup.id
      WHERE LOWER(TRIM(u.username)) = LOWER(TRIM($1))`,
     [username]
   );
@@ -57,14 +76,6 @@ const loginUser = async (username, password) => {
   }
 
   const user = result.rows[0];
-
-  console.log("LOGIN DEBUG:", {
-    username: user.username,
-    userId: user.id,
-    roleId: user.role_id,
-    status: user.status,
-    employeeStatus: user.employee_status,
-  });
 
   // Check account status and linked employee status
   if (user.status !== "active" || (user.employee_status && user.employee_status !== "active")) {
@@ -81,21 +92,17 @@ const loginUser = async (username, password) => {
     throw new Error("Invalid username or password");
   }
 
-  // Enforce attendance check-in for Waiters and Bartenders
+  // Enforce attendance check-in for Waiters, Baristas and Bartenders
   const roleName = user.role?.toLowerCase();
-  if (roleName === "waiter" || roleName === "bartender") {
-    const employeeRes = await pool.query(
-      "SELECT id FROM employees WHERE user_id = $1",
-      [user.id]
-    );
+  const shiftAttendanceRoles = ["waiter", "cafe_waiter", "bartender", "barista"];
+  if (shiftAttendanceRoles.includes(roleName)) {
+    const employeeId = user.employee_id;
 
-    if (employeeRes.rows.length === 0) {
+    if (!employeeId) {
       throw new Error(
         "No employee record associated with this account. Please contact management."
       );
     }
-
-    const employeeId = employeeRes.rows[0].id;
 
     // Check if there is an active check-in record for current shift
     const attendanceCheck = await pool.query(
@@ -120,13 +127,17 @@ const loginUser = async (username, password) => {
     }
   }
 
-  // Create JWT
+  // Create JWT with organizational scope
   const token = jwt.sign(
     {
       id: user.id,
       username: user.username,
       roleId: user.role_id,
       role: user.role,
+      employeeId: user.employee_id,
+      outletId: user.outlet_id,
+      outletCode: user.outlet_code,
+      departmentId: user.department_id,
     },
     process.env.JWT_SECRET,
     {
@@ -148,6 +159,21 @@ const loginUser = async (username, password) => {
       email: user.email,
       roleId: user.role_id,
       role: user.role,
+      employeeId: user.employee_id,
+      employeeCode: user.employee_code,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      departmentId: user.department_id,
+      departmentName: user.department_name,
+      departmentCode: user.department_code,
+      outletId: user.outlet_id,
+      outletName: user.outlet_name,
+      outletCode: user.outlet_code,
+      outletType: user.outlet_type,
+      positionId: user.position_id,
+      positionTitle: user.position_title,
+      reportsToEmployeeId: user.reports_to_employee_id,
+      reportsToName: user.reports_to_name,
     },
   };
 };

@@ -225,6 +225,96 @@ const deleteEmployeeAccount = async (req, res) => {
 };
 
 
+// GET /api/employees/hierarchy
+const getHierarchy = async (req, res) => {
+  try {
+    const hierarchy = await employeesService.getEmployeeHierarchy();
+    res.json({
+      success: true,
+      count: hierarchy.length,
+      hierarchy,
+    });
+  } catch (error) {
+    console.error("Get hierarchy error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch organizational hierarchy",
+    });
+  }
+};
+
+// GET /api/employees/outlets
+const getOutlets = async (req, res) => {
+  try {
+    const outlets = await employeesService.getAllOutlets();
+    res.json({
+      success: true,
+      count: outlets.length,
+      outlets,
+    });
+  } catch (error) {
+    console.error("Get outlets error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch outlets",
+    });
+  }
+};
+
+// GET /api/employees/positions
+const getPositions = async (req, res) => {
+  try {
+    const positions = await employeesService.getAllPositions();
+    res.json({
+      success: true,
+      count: positions.length,
+      positions,
+    });
+  } catch (error) {
+    console.error("Get positions error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch positions",
+    });
+  }
+};
+
+// GET /api/employees/roles
+const getRoles = async (req, res) => {
+  try {
+    const roles = await employeesService.getAllRoles();
+    res.json({
+      success: true,
+      count: roles.length,
+      roles,
+    });
+  } catch (error) {
+    console.error("Get roles error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch roles",
+    });
+  }
+};
+
+// GET /api/employees/departments
+const getDepartments = async (req, res) => {
+  try {
+    const departments = await employeesService.getAllDepartments();
+    res.json({
+      success: true,
+      count: departments.length,
+      departments,
+    });
+  } catch (error) {
+    console.error("Get departments error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch departments",
+    });
+  }
+};
+
 module.exports = {
   getEmployees,
   getEmployee,
@@ -233,4 +323,9 @@ module.exports = {
   deleteEmployee,
   activateEmployee,
   deleteEmployeeAccount,
+  getHierarchy,
+  getOutlets,
+  getPositions,
+  getRoles,
+  getDepartments,
 };

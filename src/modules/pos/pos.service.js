@@ -5,8 +5,8 @@ const notificationsService = require("../notifications/notifications.service");
 // GET ALL POS ORDERS
 // ============================================================
 
-const getAllOrders = async () => {
-  const result = await pool.query(`
+const getAllOrders = async (filters = {}) => {
+  let query = `
     SELECT
       o.id,
       o.order_number,
@@ -14,6 +14,7 @@ const getAllOrders = async () => {
       o.table_id,
       o.waiter_id,
       o.bartender_id,
+      o.outlet_id,
       o.is_bar_order,
       o.order_type,
       o.subtotal,
@@ -25,6 +26,9 @@ const getAllOrders = async () => {
       o.notes,
       o.created_at,
       o.updated_at,
+
+      out.name AS outlet_name,
+      out.code AS outlet_code,
 
       rt.table_number,
       rt.is_bar_seat,
@@ -46,6 +50,9 @@ const getAllOrders = async () => {
 
     FROM orders o
 
+    LEFT JOIN outlets out
+      ON o.outlet_id = out.id
+
     LEFT JOIN restaurant_tables rt
       ON o.table_id = rt.id
 
@@ -60,9 +67,24 @@ const getAllOrders = async () => {
 
     LEFT JOIN users ub
       ON eb.user_id = ub.id
+  `;
 
-    ORDER BY o.created_at DESC
-  `);
+  const conditions = [];
+  const params = [];
+
+  const outletId = filters.outletId || filters.outlet_id;
+  if (outletId) {
+    params.push(Number(outletId));
+    conditions.push(`o.outlet_id = $${params.length}`);
+  }
+
+  if (conditions.length > 0) {
+    query += ` WHERE ${conditions.join(" AND ")}`;
+  }
+
+  query += ` ORDER BY o.created_at DESC`;
+
+  const result = await pool.query(query, params);
 
   const orders = result.rows;
 
@@ -370,10 +392,27 @@ const createOrder = async (order) => {
 
     const finalIsBarOrder = Boolean(is_bar_order || isBartenderRole || isTableBarSeat);
 
+    // Resolve Outlet ID
+    let resolvedOutletId = order.outlet_id || order.outletId || (order.user && (order.user.outlet_id || order.user.outletId));
+    if (!resolvedOutletId && validTableId) {
+      const tRes = await client.query("SELECT outlet_id FROM restaurant_tables WHERE id = $1", [validTableId]);
+      if (tRes.rows.length > 0 && tRes.rows[0].outlet_id) {
+        resolvedOutletId = tRes.rows[0].outlet_id;
+      }
+    }
+    if (!resolvedOutletId) {
+      const defaultOutletRes = await client.query("SELECT id FROM outlets WHERE code = 'RESTAURANT' LIMIT 1");
+      if (defaultOutletRes.rows.length > 0) {
+        resolvedOutletId = defaultOutletRes.rows[0].id;
+      }
+    }
 
     // ============================================================
     // CREATE MAIN ORDER
     // ============================================================
+
+    const finalOrderNumber =
+      orderNumber || `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const result = await client.query(
       `
@@ -384,6 +423,7 @@ const createOrder = async (order) => {
         table_id,
         waiter_id,
         bartender_id,
+        outlet_id,
         is_bar_order,
         order_type,
         subtotal,
@@ -407,19 +447,21 @@ const createOrder = async (order) => {
         $10,
         $11,
         $12,
+        $13,
         'pending',
         'pending',
-        $13
+        $14
       )
       RETURNING *
       `,
       [
-        orderNumber || null,
+        finalOrderNumber,
         customerId || null,
         targetVipId,
         validTableId,
         employeeId,
         resolvedBartenderId,
+        resolvedOutletId,
         finalIsBarOrder,
         orderType || "dine_in",
         subtotal || 0,
@@ -736,6 +778,20 @@ const createOrder = async (order) => {
     // ============================================================
 
     if (kitchenItems.length > 0) {
+      // Determine destination kitchen: Cafe Kitchen vs Restaurant Kitchen
+      let targetKitchenOutletId = null;
+      if (resolvedOutletId) {
+        const outCodeRes = await client.query("SELECT code FROM outlets WHERE id = $1", [resolvedOutletId]);
+        if (outCodeRes.rows.length > 0 && outCodeRes.rows[0].code === "CAFE") {
+          const cafeKitRes = await client.query("SELECT id FROM outlets WHERE code = 'CAFE_KITCHEN' LIMIT 1");
+          if (cafeKitRes.rows.length > 0) targetKitchenOutletId = cafeKitRes.rows[0].id;
+        }
+      }
+
+      if (!targetKitchenOutletId) {
+        const restKitRes = await client.query("SELECT id FROM outlets WHERE code = 'RESTAURANT_KITCHEN' LIMIT 1");
+        if (restKitRes.rows.length > 0) targetKitchenOutletId = restKitRes.rows[0].id;
+      }
 
       const kitchenOrderResult = await client.query(
         `
@@ -743,13 +799,15 @@ const createOrder = async (order) => {
           order_id,
           chef_id,
           notes,
-          status
+          status,
+          kitchen_outlet_id
         )
         VALUES (
           $1,
           $2,
           $3,
-          'pending'
+          'pending',
+          $4
         )
         RETURNING *
         `,
@@ -757,6 +815,7 @@ const createOrder = async (order) => {
           createdOrder.id,
           null,
           notes || null,
+          targetKitchenOutletId,
         ]
       );
 
@@ -797,6 +856,9 @@ const createOrder = async (order) => {
     // ============================================================
 
     if (barItems.length > 0) {
+      let barOutletId = null;
+      const barOutRes = await client.query("SELECT id FROM outlets WHERE code = 'BAR' LIMIT 1");
+      if (barOutRes.rows.length > 0) barOutletId = barOutRes.rows[0].id;
 
       const barOrderResult = await client.query(
         `
@@ -804,13 +866,15 @@ const createOrder = async (order) => {
           order_id,
           bartender_id,
           notes,
-          status
+          status,
+          outlet_id
         )
         VALUES (
           $1,
           $2,
           $3,
-          'pending'
+          'pending',
+          $4
         )
         RETURNING *
         `,
@@ -818,6 +882,7 @@ const createOrder = async (order) => {
           createdOrder.id,
           resolvedBartenderId || null,
           notes || null,
+          barOutletId,
         ]
       );
 

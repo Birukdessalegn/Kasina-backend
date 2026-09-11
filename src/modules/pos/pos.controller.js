@@ -8,8 +8,8 @@ const vipCustomersService = require("../customers/vip_customers.service");
 
 const getOrders = async (req, res) => {
   try {
-
-    const orders = await posService.getAllOrders();
+    const outletId = req.query.outlet_id || req.query.outletId || (req.user && req.user.outlet_id);
+    const orders = await posService.getAllOrders({ outletId });
 
     res.json({
       success: true,

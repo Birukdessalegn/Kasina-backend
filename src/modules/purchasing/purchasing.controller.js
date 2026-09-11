@@ -332,6 +332,83 @@ const payPurchase = async (req, res) => {
   }
 };
 
+// ============================================================
+// PURCHASE REQUESTS
+// ============================================================
+
+const getPurchaseRequests = async (req, res) => {
+  try {
+    const { status, departmentId, outletId } = req.query;
+    const requests = await purchasingService.getAllPurchaseRequests({ status, departmentId, outletId });
+    res.json({
+      success: true,
+      count: requests.length,
+      requests,
+    });
+  } catch (error) {
+    console.error("Get purchase requests error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch purchase requests",
+    });
+  }
+};
+
+const getPurchaseRequest = async (req, res) => {
+  try {
+    const request = await purchasingService.getPurchaseRequestById(req.params.id);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase request not found",
+      });
+    }
+    res.json({
+      success: true,
+      request,
+    });
+  } catch (error) {
+    console.error("Get purchase request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch purchase request",
+    });
+  }
+};
+
+const createPurchaseRequest = async (req, res) => {
+  try {
+    const request = await purchasingService.createPurchaseRequest(req.body, req.user?.id);
+    res.status(201).json({
+      success: true,
+      message: "Purchase request submitted successfully",
+      request,
+    });
+  } catch (error) {
+    console.error("Create purchase request error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to create purchase request",
+    });
+  }
+};
+
+const reviewPurchaseRequest = async (req, res) => {
+  try {
+    const request = await purchasingService.reviewPurchaseRequest(req.params.id, req.body, req.user?.id);
+    res.json({
+      success: true,
+      message: `Purchase request ${req.body.status} successfully`,
+      request,
+    });
+  } catch (error) {
+    console.error("Review purchase request error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to review purchase request",
+    });
+  }
+};
 
 module.exports = {
   getSuppliers,
@@ -344,7 +421,11 @@ module.exports = {
   updatePurchase,
   receivePurchase,
   cancelPurchase,
-
   payPurchase,
+
+  getPurchaseRequests,
+  getPurchaseRequest,
+  createPurchaseRequest,
+  reviewPurchaseRequest,
 };
   

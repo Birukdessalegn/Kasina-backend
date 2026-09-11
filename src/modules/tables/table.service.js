@@ -4,8 +4,8 @@ const pool = require("../../config/database");
 // GET ALL RESTAURANT TABLES
 // ============================================================
 
-const getAllTables = async () => {
-  const result = await pool.query(`
+const getAllTables = async (filters = {}) => {
+  let query = `
     SELECT
       t.id,
       t.table_number,
@@ -16,7 +16,12 @@ const getAllTables = async () => {
       t.section,
       t.status,
       t.current_waiter_id,
+      t.outlet_id,
+      t.is_active,
       t.created_at,
+
+      o.name AS outlet_name,
+      o.code AS outlet_code,
 
       e.first_name AS waiter_first_name,
       e.last_name AS waiter_last_name,
@@ -24,15 +29,32 @@ const getAllTables = async () => {
 
     FROM restaurant_tables t
 
+    LEFT JOIN outlets o
+      ON t.outlet_id = o.id
+
     LEFT JOIN employees e
       ON t.current_waiter_id = e.id
 
     LEFT JOIN users u
       ON e.user_id = u.id
+  `;
 
-    ORDER BY t.id ASC
-  `);
+  const conditions = [];
+  const params = [];
 
+  const outletId = filters.outletId || filters.outlet_id;
+  if (outletId) {
+    params.push(Number(outletId));
+    conditions.push(`t.outlet_id = $${params.length}`);
+  }
+
+  if (conditions.length > 0) {
+    query += ` WHERE ${conditions.join(" AND ")}`;
+  }
+
+  query += ` ORDER BY t.id ASC`;
+
+  const result = await pool.query(query, params);
   return result.rows;
 };
 

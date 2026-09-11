@@ -22,6 +22,9 @@ const vipCustomersRoutes = require("./modules/customers/vip_customers.routes");
 const notificationsRoutes = require("./modules/notifications/notifications.routes");
 const roomsRoutes = require("./modules/rooms/rooms.routes");
 const roomReservationsRoutes = require("./modules/room-reservations/room-reservations.routes");
+const recipesRoutes = require("./modules/recipes/recipes.routes");
+const housekeepingRoutes = require("./modules/housekeeping/housekeeping.routes");
+const payrollRoutes = require("./modules/payroll/payroll.routes");
 
 const app = express();
 
@@ -75,6 +78,9 @@ app.use("/api/vip-customers", vipCustomersRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/rooms", roomsRoutes);
 app.use("/api/room-reservations", roomReservationsRoutes);
+app.use("/api/recipes", recipesRoutes);
+app.use("/api/housekeeping", housekeepingRoutes);
+app.use("/api/payroll", payrollRoutes);
 
 // Test route
 app.get("/", (req, res) => {

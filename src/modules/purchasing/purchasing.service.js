@@ -415,7 +415,7 @@ const updatePurchase = async (id, data) => {
 // RECEIVE PURCHASE
 // ============================================================
 
-const receivePurchase = async (purchaseId, userId) => {
+const receivePurchase = async (purchaseId, userId, options = {}) => {
   const client = await pool.connect();
 
   try {
@@ -461,6 +461,8 @@ const receivePurchase = async (purchaseId, userId) => {
       throw new Error("Purchase order has no items");
     }
 
+    let allFulfilled = true;
+
     for (const item of itemsResult.rows) {
       const remainingQuantity =
         Number(item.quantity) -
@@ -468,6 +470,26 @@ const receivePurchase = async (purchaseId, userId) => {
 
       if (remainingQuantity <= 0) {
         continue;
+      }
+
+      // Check if partial quantity specified in options
+      let qtyToReceive = remainingQuantity;
+      if (options.receivedItems && Array.isArray(options.receivedItems)) {
+        const itemOption = options.receivedItems.find(
+          (r) => Number(r.productId || r.product_id) === Number(item.product_id)
+        );
+        if (itemOption && itemOption.quantity !== undefined) {
+          qtyToReceive = Math.min(Number(itemOption.quantity), remainingQuantity);
+        }
+      }
+
+      if (qtyToReceive <= 0) {
+        allFulfilled = false;
+        continue;
+      }
+
+      if (qtyToReceive < remainingQuantity) {
+        allFulfilled = false;
       }
 
       // Make sure inventory exists
@@ -495,7 +517,7 @@ const receivePurchase = async (purchaseId, userId) => {
           `,
           [
             item.product_id,
-            remainingQuantity,
+            qtyToReceive,
           ]
         );
 
@@ -510,7 +532,7 @@ const receivePurchase = async (purchaseId, userId) => {
           WHERE product_id = $2
           `,
           [
-            remainingQuantity,
+            qtyToReceive,
             item.product_id,
           ]
         );
@@ -534,40 +556,46 @@ const receivePurchase = async (purchaseId, userId) => {
           $2,
           'purchase',
           $3,
-          'Stock received from purchase order',
-          $4
+          $4,
+          $5
         )
         `,
         [
           item.product_id,
-          remainingQuantity,
+          qtyToReceive,
           purchaseId,
+          options.notes || 'Stock received from purchase order',
           userId || null,
         ]
       );
 
-      // Update received quantity
+      // Update received quantity on purchase order item
       await client.query(
         `
         UPDATE purchase_order_items
-        SET received_quantity = quantity
-        WHERE id = $1
+        SET received_quantity = received_quantity + $1
+        WHERE id = $2
         `,
-        [item.id]
+        [qtyToReceive, item.id]
       );
     }
 
-    // Mark purchase received
+    // Determine target status
+    const finalStatus = allFulfilled ? 'received' : 'partially_received';
+
+    // Update verified_by, verified_at and status
     const updatedPurchase = await client.query(
       `
       UPDATE purchase_orders
       SET
-        status = 'received',
+        status = $1,
+        verified_by = $2,
+        verified_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1
+      WHERE id = $3
       RETURNING *
       `,
-      [purchaseId]
+      [finalStatus, userId || null, purchaseId]
     );
 
     await client.query("COMMIT");
@@ -584,67 +612,278 @@ const receivePurchase = async (purchaseId, userId) => {
 };
 
 
-// ============================================================
-// DELETE / CANCEL PURCHASE
-// ============================================================
+  // ============================================================
+  // DELETE / CANCEL PURCHASE
+  // ============================================================
 
-const cancelPurchase = async (id) => {
-  const result = await pool.query(
-    `
-    UPDATE purchase_orders
-    SET
-      status = 'cancelled',
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = $1
-      AND status NOT IN ('received', 'cancelled')
-    RETURNING *
-    `,
-    [id]
-  );
+  const cancelPurchase = async (id) => {
+    const result = await pool.query(
+      `
+      UPDATE purchase_orders
+      SET
+        status = 'cancelled',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+        AND status NOT IN ('received', 'cancelled')
+      RETURNING *
+      `,
+      [id]
+    );
 
-  return result.rows[0];
-};
-
-
-// ============================================================
-// PAY / MARK AS PAID PURCHASE ORDER
-// ============================================================
-
-const payPurchase = async (id, paymentMethod = "cash") => {
-  const result = await pool.query(
-    `
-    UPDATE purchase_orders
-    SET
-      payment_status = 'paid',
-      payment_method = COALESCE($1, payment_method, 'cash'),
-      paid_amount = total,
-      paid_at = CURRENT_TIMESTAMP,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = $2
-    RETURNING *
-    `,
-    [paymentMethod, id]
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return getPurchaseById(id);
-};
+    return result.rows[0];
+  };
 
 
-module.exports = {
-  getAllSuppliers,
-  getSupplierById,
-  createSupplier,
+  // ============================================================
+  // PAY / MARK AS PAID PURCHASE ORDER
+  // ============================================================
 
-  getAllPurchases,
-  getPurchaseById,
-  createPurchase,
-  updatePurchase,
-  receivePurchase,
-  cancelPurchase,
+  const payPurchase = async (id, paymentMethod = "cash") => {
+    const result = await pool.query(
+      `
+      UPDATE purchase_orders
+      SET
+        payment_status = 'paid',
+        payment_method = COALESCE($1, payment_method, 'cash'),
+        paid_amount = total,
+        paid_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *
+      `,
+      [paymentMethod, id]
+    );
 
-  payPurchase,
-};
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return getPurchaseById(id);
+  };
+
+
+  // ============================================================
+  // PURCHASE REQUESTS (DEPARTMENT / OUTLET REQUISITIONS)
+  // ============================================================
+
+  const getAllPurchaseRequests = async (filters = {}) => {
+    let query = `
+      SELECT 
+        pr.*,
+        d.name AS department_name,
+        d.code AS department_code,
+        o.name AS outlet_name,
+        o.code AS outlet_code,
+        u.username AS requested_by_username,
+        CONCAT(e.first_name, ' ', e.last_name) AS requested_by_name,
+        ru.username AS reviewed_by_username,
+        (SELECT COUNT(*)::int FROM purchase_request_items pri WHERE pri.purchase_request_id = pr.id) AS items_count,
+        (SELECT COALESCE(SUM(pri.quantity * pri.estimated_price), 0) FROM purchase_request_items pri WHERE pri.purchase_request_id = pr.id) AS estimated_total
+      FROM purchase_requests pr
+      LEFT JOIN departments d ON pr.department_id = d.id
+      LEFT JOIN outlets o ON pr.outlet_id = o.id
+      LEFT JOIN users u ON pr.requested_by = u.id
+      LEFT JOIN employees e ON e.user_id = u.id
+      LEFT JOIN users ru ON pr.reviewed_by = ru.id
+    `;
+
+    const conditions = [];
+    const params = [];
+
+    if (filters.status) {
+      params.push(filters.status);
+      conditions.push(`pr.status = $${params.length}`);
+    }
+
+    if (filters.departmentId) {
+      params.push(Number(filters.departmentId));
+      conditions.push(`pr.department_id = $${params.length}`);
+    }
+
+    if (filters.outletId) {
+      params.push(Number(filters.outletId));
+      conditions.push(`pr.outlet_id = $${params.length}`);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(" AND ")}`;
+    }
+
+    query += ` ORDER BY pr.created_at DESC`;
+
+    const result = await pool.query(query, params);
+    return result.rows;
+  };
+
+  const getPurchaseRequestById = async (id) => {
+    const prResult = await pool.query(
+      `
+      SELECT 
+        pr.*,
+        d.name AS department_name,
+        d.code AS department_code,
+        o.name AS outlet_name,
+        o.code AS outlet_code,
+        u.username AS requested_by_username,
+        CONCAT(e.first_name, ' ', e.last_name) AS requested_by_name,
+        ru.username AS reviewed_by_username
+      FROM purchase_requests pr
+      LEFT JOIN departments d ON pr.department_id = d.id
+      LEFT JOIN outlets o ON pr.outlet_id = o.id
+      LEFT JOIN users u ON pr.requested_by = u.id
+      LEFT JOIN employees e ON e.user_id = u.id
+      LEFT JOIN users ru ON pr.reviewed_by = ru.id
+      WHERE pr.id = $1
+      `,
+      [id]
+    );
+
+    if (prResult.rows.length === 0) return null;
+
+    const itemsResult = await pool.query(
+      `
+      SELECT 
+        pri.*,
+        p.name AS product_name,
+        p.product_code,
+        p.price,
+        p.cost_price
+      FROM purchase_request_items pri
+      JOIN products p ON pri.product_id = p.id
+      WHERE pri.purchase_request_id = $1
+      ORDER BY pri.id ASC
+      `,
+      [id]
+    );
+
+    return {
+      ...prResult.rows[0],
+      items: itemsResult.rows,
+    };
+  };
+
+  const createPurchaseRequest = async (data, userId) => {
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const { departmentId, outletId, priority, notes, items } = data;
+
+      if (!items || items.length === 0) {
+        throw new Error("Purchase request must include at least one item");
+      }
+
+      // Generate request number: PR-YYYYMMDD-XXXX
+      const countRes = await client.query("SELECT COUNT(*) FROM purchase_requests");
+      const count = parseInt(countRes.rows[0].count, 10) + 1;
+      const requestNumber = `PR-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(count).padStart(3, "0")}`;
+
+      const prResult = await client.query(
+        `
+        INSERT INTO purchase_requests (
+          request_number,
+          department_id,
+          outlet_id,
+          requested_by,
+          priority,
+          notes,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        RETURNING *
+        `,
+        [
+          requestNumber,
+          departmentId || null,
+          outletId || null,
+          userId || null,
+          priority || "normal",
+          notes || null,
+        ]
+      );
+
+      const request = prResult.rows[0];
+
+      for (const item of items) {
+        await client.query(
+          `
+          INSERT INTO purchase_request_items (
+            purchase_request_id,
+            product_id,
+            quantity,
+            unit,
+            estimated_price,
+            notes
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          `,
+          [
+            request.id,
+            item.productId || item.product_id,
+            Number(item.quantity),
+            item.unit || "pcs",
+            Number(item.estimatedPrice || item.estimated_price || 0),
+            item.notes || null,
+          ]
+        );
+      }
+
+      await client.query("COMMIT");
+      return getPurchaseRequestById(request.id);
+
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  };
+
+  const reviewPurchaseRequest = async (id, reviewData, userId) => {
+    const { status, rejectionReason } = reviewData;
+
+    if (!["approved", "rejected"].includes(status)) {
+      throw new Error("Invalid status. Allowed values: 'approved', 'rejected'");
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE purchase_requests
+      SET 
+        status = $1,
+        reviewed_by = $2,
+        reviewed_at = CURRENT_TIMESTAMP,
+        rejection_reason = $3,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+      RETURNING *
+      `,
+      [status, userId || null, rejectionReason || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Purchase request not found");
+    }
+
+    return getPurchaseRequestById(id);
+  };
+
+  module.exports = {
+    getAllSuppliers,
+    getSupplierById,
+    createSupplier,
+
+    getAllPurchases,
+    getPurchaseById,
+    createPurchase,
+    updatePurchase,
+    receivePurchase,
+    cancelPurchase,
+    payPurchase,
+
+    getAllPurchaseRequests,
+    getPurchaseRequestById,
+    createPurchaseRequest,
+    reviewPurchaseRequest,
+  };
