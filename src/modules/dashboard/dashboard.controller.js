@@ -8,12 +8,17 @@ const dashboardService = require("./dashboard.service");
 const getDashboard = async (req, res) => {
   try {
 
-    const stats =
-      await dashboardService.getDashboardSummary();
+    const [stats, salesChart, topProducts] = await Promise.all([
+      dashboardService.getDashboardSummary(),
+      dashboardService.getSalesChart(),
+      dashboardService.getTopProducts(10),
+    ]);
 
     res.json({
       success: true,
       stats,
+      sales_chart: salesChart || [],
+      top_products: topProducts || [],
     });
 
   } catch (error) {
