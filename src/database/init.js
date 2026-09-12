@@ -4,6 +4,24 @@ const pool = require("../config/database");
 
 const initializeDatabase = async () => {
   try {
+    // Ensure critical columns exist on legacy tables before index creation in schema.sql
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'outlet_id') THEN
+            ALTER TABLE users ADD COLUMN outlet_id INTEGER;
+          END IF;
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'employees') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'outlet_id') THEN
+            ALTER TABLE employees ADD COLUMN outlet_id INTEGER;
+          END IF;
+        END IF;
+      END $$;
+    `);
+
     const schemaPath = path.join(__dirname, "schema.sql");
     const schema = fs.readFileSync(schemaPath, "utf8");
 
