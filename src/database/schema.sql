@@ -5,10 +5,21 @@
 -- ============================================================
 
 -- ============================================================
--- EXTENSIONS
+-- EXTENSIONS (Safely handled for shared hosting environments)
 -- ============================================================
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+DO $$
+BEGIN
+    BEGIN
+        CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+    EXCEPTION WHEN OTHERS THEN
+        BEGIN
+            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+        EXCEPTION WHEN OTHERS THEN
+            NULL; -- In PostgreSQL 13+, gen_random_uuid() is built-in natively
+        END;
+    END;
+END $$;
 
 
 -- ============================================================
