@@ -33,6 +33,9 @@ const initializeDatabase = async () => {
 
         -- PRODUCTS table columns
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'products') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'item_type') THEN
+            ALTER TABLE products ADD COLUMN item_type VARCHAR(30) DEFAULT 'menu_item';
+          END IF;
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'preparation_outlet_id') THEN
             ALTER TABLE products ADD COLUMN preparation_outlet_id INTEGER;
           END IF;
@@ -41,6 +44,92 @@ const initializeDatabase = async () => {
           END IF;
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'is_shot_item') THEN
             ALTER TABLE products ADD COLUMN is_shot_item BOOLEAN DEFAULT FALSE;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'menu_type') THEN
+            ALTER TABLE products ADD COLUMN menu_type VARCHAR(30) DEFAULT 'both';
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'parent_product_id') THEN
+            ALTER TABLE products ADD COLUMN parent_product_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'portion_ratio') THEN
+            ALTER TABLE products ADD COLUMN portion_ratio NUMERIC(10,4) DEFAULT 1.0000;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'serving_size') THEN
+            ALTER TABLE products ADD COLUMN serving_size VARCHAR(50) DEFAULT 'unit';
+          END IF;
+        END IF;
+
+        -- ORDERS table columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'orders') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'outlet_id') THEN
+            ALTER TABLE orders ADD COLUMN outlet_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'is_bar_order') THEN
+            ALTER TABLE orders ADD COLUMN is_bar_order BOOLEAN DEFAULT FALSE;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'bartender_id') THEN
+            ALTER TABLE orders ADD COLUMN bartender_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'vip_customer_id') THEN
+            ALTER TABLE orders ADD COLUMN vip_customer_id INTEGER;
+          END IF;
+        END IF;
+
+        -- RESTAURANT_TABLES columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'restaurant_tables') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'restaurant_tables' AND column_name = 'outlet_id') THEN
+            ALTER TABLE restaurant_tables ADD COLUMN outlet_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'restaurant_tables' AND column_name = 'is_bar_seat') THEN
+            ALTER TABLE restaurant_tables ADD COLUMN is_bar_seat BOOLEAN DEFAULT FALSE;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'restaurant_tables' AND column_name = 'type') THEN
+            ALTER TABLE restaurant_tables ADD COLUMN type VARCHAR(50) DEFAULT 'dining';
+          END IF;
+        END IF;
+
+        -- DEPARTMENT_INVENTORY columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'department_inventory') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'department_inventory' AND column_name = 'outlet_id') THEN
+            ALTER TABLE department_inventory ADD COLUMN outlet_id INTEGER;
+          END IF;
+        END IF;
+
+        -- STOCK_TRANSFERS columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'stock_transfers') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stock_transfers' AND column_name = 'from_outlet_id') THEN
+            ALTER TABLE stock_transfers ADD COLUMN from_outlet_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stock_transfers' AND column_name = 'to_outlet_id') THEN
+            ALTER TABLE stock_transfers ADD COLUMN to_outlet_id INTEGER;
+          END IF;
+        END IF;
+
+        -- KITCHEN_ORDERS columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'kitchen_orders') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'kitchen_orders' AND column_name = 'kitchen_outlet_id') THEN
+            ALTER TABLE kitchen_orders ADD COLUMN kitchen_outlet_id INTEGER;
+          END IF;
+        END IF;
+
+        -- BAR_ORDERS columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bar_orders') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bar_orders' AND column_name = 'outlet_id') THEN
+            ALTER TABLE bar_orders ADD COLUMN outlet_id INTEGER;
+          END IF;
+        END IF;
+
+        -- CASHIER_SHIFTS columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cashier_shifts') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cashier_shifts' AND column_name = 'outlet_id') THEN
+            ALTER TABLE cashier_shifts ADD COLUMN outlet_id INTEGER;
+          END IF;
+        END IF;
+
+        -- PAYMENTS columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'payments') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'outlet_id') THEN
+            ALTER TABLE payments ADD COLUMN outlet_id INTEGER;
           END IF;
         END IF;
       END $$;
