@@ -107,8 +107,24 @@ const createTable = async (data) => {
   const location = data.location || null;
   const isBarSeat = Boolean(data.is_bar_seat || data.isBarSeat);
   const type = data.type || (isBarSeat ? "bar" : "dining");
-  const section = data.section || (isBarSeat ? "BAR" : type === "vip" ? "VIP" : "DINING");
+  const section = data.section || (isBarSeat ? "BAR" : type === "vip" ? "VIP" : type === "cafe" ? "CAFE" : "DINING");
   const status = data.status || "available";
+
+  // Resolve outlet_id (2: Cafe, 3: Bar, 4: Restaurant)
+  let outletId = data.outlet_id || data.outletId || null;
+  if (!outletId) {
+    const locLower = String(location || "").toLowerCase();
+    const secUpper = String(section || "").toUpperCase();
+    const typeLower = String(type || "").toLowerCase();
+
+    if (typeLower === "cafe" || secUpper === "CAFE" || locLower.includes("cafe") || String(tableNumber || "").toLowerCase().startsWith("cf")) {
+      outletId = 2; // Cafe
+    } else if (isBarSeat || typeLower === "bar" || secUpper === "BAR" || locLower.includes("bar") || String(tableNumber || "").toLowerCase().startsWith("bar")) {
+      outletId = 3; // Main Bar
+    } else {
+      outletId = 4; // Main Restaurant
+    }
+  }
 
   const result = await pool.query(
     `
@@ -119,12 +135,13 @@ const createTable = async (data) => {
       is_bar_seat,
       type,
       section,
-      status
+      status,
+      outlet_id
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *
     `,
-    [tableNumber, capacity, location, isBarSeat, type, section, status]
+    [tableNumber, capacity, location, isBarSeat, type, section, status, outletId]
   );
 
   return result.rows[0];
@@ -143,6 +160,7 @@ const updateTable = async (id, data) => {
   const section = data.section !== undefined ? data.section : undefined;
   const status = data.status !== undefined ? data.status : undefined;
   const currentWaiterId = data.current_waiter_id !== undefined ? data.current_waiter_id : (data.currentWaiterId !== undefined ? data.currentWaiterId : undefined);
+  const outletId = data.outlet_id !== undefined ? data.outlet_id : (data.outletId !== undefined ? data.outletId : undefined);
 
   const result = await pool.query(
     `
@@ -159,8 +177,9 @@ const updateTable = async (id, data) => {
         WHEN $8::text = 'NULL' THEN NULL
         WHEN $8::integer IS NOT NULL THEN $8::integer
         ELSE current_waiter_id
-      END
-    WHERE id = $9
+      END,
+      outlet_id = COALESCE($9, outlet_id)
+    WHERE id = $10
     RETURNING *
     `,
     [
@@ -172,6 +191,7 @@ const updateTable = async (id, data) => {
       section ?? null,
       status ?? null,
       currentWaiterId === null ? 'NULL' : (currentWaiterId ?? null),
+      outletId ?? null,
       id,
     ]
   );

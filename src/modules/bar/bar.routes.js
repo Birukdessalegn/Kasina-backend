@@ -5,7 +5,12 @@ const router = express.Router();
 const barController = require("./bar.controller");
 
 
-// Get all bar orders
+// Get all bar orders (supports both / and /orders)
+router.get(
+  "/",
+  barController.getBarOrders
+);
+
 router.get(
   "/orders",
   barController.getBarOrders

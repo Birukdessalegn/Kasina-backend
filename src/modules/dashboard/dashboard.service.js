@@ -8,13 +8,132 @@ const getDashboardSummary = async () => {
   const result = await pool.query(`
     SELECT
 
-      -- Today's sales
+      -- Today's POS sales (Food & Beverage)
       (
         SELECT COALESCE(SUM(amount), 0)
         FROM payments
-        WHERE status = 'paid'
+        WHERE status::text = 'paid'
           AND paid_at::date = CURRENT_DATE
+      ) AS today_pos_sales,
+
+      -- All-time POS sales (Food & Beverage)
+      (
+        SELECT COALESCE(SUM(amount), 0)
+        FROM payments
+        WHERE status::text = 'paid'
+      ) AS pos_sales_all_time,
+
+      -- Today's Room Lodging sales
+      (
+        SELECT COALESCE(SUM(amount), 0)
+        FROM room_payments
+        WHERE created_at::date = CURRENT_DATE
+      ) AS today_room_sales,
+
+      -- All-time Room Lodging sales
+      (
+        SELECT COALESCE(SUM(amount), 0)
+        FROM room_payments
+      ) AS room_sales_all_time,
+
+      -- Today's VIP debt repayments
+      (
+        SELECT COALESCE(SUM(amount), 0)
+        FROM customer_repayments
+        WHERE created_at::date = CURRENT_DATE
+      ) AS today_vip_repayments,
+
+      -- All-time VIP debt repayments
+      (
+        SELECT COALESCE(SUM(amount), 0)
+        FROM customer_repayments
+      ) AS vip_repayments_all_time,
+
+      -- GRAND TOTAL HOTEL REVENUE (Collected across all fields: Rooms + POS Food/Bar + VIP Repayments)
+      (
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status::text = 'paid') +
+        (SELECT COALESCE(SUM(amount), 0) FROM room_payments) +
+        (SELECT COALESCE(SUM(amount), 0) FROM customer_repayments)
+      ) AS all_time_sales,
+      (
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status::text = 'paid') +
+        (SELECT COALESCE(SUM(amount), 0) FROM room_payments) +
+        (SELECT COALESCE(SUM(amount), 0) FROM customer_repayments)
+      ) AS total_sales,
+      (
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status::text = 'paid') +
+        (SELECT COALESCE(SUM(amount), 0) FROM room_payments) +
+        (SELECT COALESCE(SUM(amount), 0) FROM customer_repayments)
+      ) AS lifetime_sales,
+      (
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status::text = 'paid') +
+        (SELECT COALESCE(SUM(amount), 0) FROM room_payments) +
+        (SELECT COALESCE(SUM(amount), 0) FROM customer_repayments)
+      ) AS grand_total_revenue,
+      (
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status::text = 'paid') +
+        (SELECT COALESCE(SUM(amount), 0) FROM room_payments) +
+        (SELECT COALESCE(SUM(amount), 0) FROM customer_repayments)
+      ) AS total_revenue,
+
+      -- GRAND TODAY HOTEL REVENUE (Collected today across all fields)
+      (
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status::text = 'paid' AND paid_at::date = CURRENT_DATE) +
+        (SELECT COALESCE(SUM(amount), 0) FROM room_payments WHERE created_at::date = CURRENT_DATE) +
+        (SELECT COALESCE(SUM(amount), 0) FROM customer_repayments WHERE created_at::date = CURRENT_DATE)
       ) AS today_sales,
+      (
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status::text = 'paid' AND paid_at::date = CURRENT_DATE) +
+        (SELECT COALESCE(SUM(amount), 0) FROM room_payments WHERE created_at::date = CURRENT_DATE) +
+        (SELECT COALESCE(SUM(amount), 0) FROM customer_repayments WHERE created_at::date = CURRENT_DATE)
+      ) AS grand_today_revenue,
+
+      -- Total gross order value across all non-cancelled orders in DB
+      (
+        SELECT COALESCE(SUM(total), 0)
+        FROM orders
+        WHERE status::text != 'cancelled'
+      ) AS all_time_orders_total,
+      (
+        SELECT COALESCE(SUM(total), 0)
+        FROM orders
+        WHERE status::text != 'cancelled'
+      ) AS total_orders_amount,
+
+      -- Total room reservations booked amount in DB
+      (
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM room_reservations
+        WHERE status != 'cancelled'
+      ) AS total_room_reservations_amount,
+
+      -- Total rooms booked count
+      (
+        SELECT COUNT(*)
+        FROM room_reservations
+        WHERE status != 'cancelled'
+      ) AS total_rooms_booked,
+
+      -- Active occupied / booked rooms count
+      (
+        SELECT COUNT(*)
+        FROM rooms
+        WHERE status IN ('occupied', 'reserved')
+      ) AS active_rooms_count,
+
+      -- TOTAL HOTEL BUSINESS VOLUME (All F&B Orders + All Room Reservations)
+      (
+        (SELECT COALESCE(SUM(total), 0) FROM orders WHERE status::text != 'cancelled') +
+        (SELECT COALESCE(SUM(total_amount), 0) FROM room_reservations WHERE status != 'cancelled')
+      ) AS total_hotel_business_volume,
+
+      -- Active pending orders money on open tables
+      (
+        SELECT COALESCE(SUM(total), 0)
+        FROM orders
+        WHERE status::text NOT IN ('cancelled', 'completed', 'paid')
+          AND payment_status::text != 'paid'
+      ) AS active_orders_amount,
 
       -- Today's orders
       (
@@ -145,7 +264,22 @@ const getDashboardSummary = async () => {
         FROM expenses
         WHERE expense_date = CURRENT_DATE
           AND status = 'paid'
-      ) AS today_expenses
+      ) AS today_expenses,
+
+      -- Today's tax from paid orders
+      (
+        SELECT COALESCE(SUM(tax), 0)
+        FROM orders
+        WHERE (status::text = 'completed' OR payment_status::text = 'paid')
+          AND created_at::date = CURRENT_DATE
+      ) AS today_tax,
+
+      -- Lifetime total tax from paid orders
+      (
+        SELECT COALESCE(SUM(tax), 0)
+        FROM orders
+        WHERE (status::text = 'completed' OR payment_status::text = 'paid')
+      ) AS total_tax
 
   `);
 
@@ -163,7 +297,7 @@ const getTodaySales = async () => {
       COALESCE(SUM(amount), 0) AS total_sales,
       COUNT(*) AS payment_count
     FROM payments
-    WHERE status = 'paid'
+    WHERE status::text = 'paid'
       AND paid_at::date = CURRENT_DATE
   `);
 
@@ -211,8 +345,8 @@ const getSalesChart = async () => {
       DATE(paid_at) AS date,
       COALESCE(SUM(amount), 0) AS sales
     FROM payments
-    WHERE status = 'paid'
-      AND paid_at >= CURRENT_DATE - INTERVAL '6 days'
+    WHERE status::text = 'paid'
+      AND (paid_at >= CURRENT_DATE - INTERVAL '30 days' OR paid_at IS NOT NULL)
     GROUP BY DATE(paid_at)
     ORDER BY DATE(paid_at) ASC
   `);
@@ -238,7 +372,7 @@ const getTopProducts = async (limit = 10) => {
       pc.name AS category_name,
       pc.type AS category_type,
       COALESCE(SUM(oi.quantity), 0)::INTEGER AS quantity_sold,
-      COALESCE(SUM(oi.total_price), SUM(oi.subtotal), SUM(oi.unit_price * oi.quantity), 0)::NUMERIC(12,2) AS revenue
+      COALESCE(SUM(oi.total), SUM(oi.unit_price * oi.quantity), 0)::NUMERIC(12,2) AS revenue
 
     FROM order_items oi
 
