@@ -984,43 +984,6 @@ CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category_id);
 
 
--- ============================================================
--- 21B. BASIC PAYROLL ARCHIVES
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS payroll_runs (
-    id SERIAL PRIMARY KEY,
-    period_month VARCHAR(7) NOT NULL UNIQUE, -- 'YYYY-MM'
-    total_employees INTEGER NOT NULL DEFAULT 0,
-    total_gross NUMERIC(14,2) NOT NULL DEFAULT 0.00,
-    total_deductions NUMERIC(14,2) NOT NULL DEFAULT 0.00,
-    total_net NUMERIC(14,2) NOT NULL DEFAULT 0.00,
-    status VARCHAR(30) DEFAULT 'draft', -- 'draft', 'approved', 'paid'
-    processed_by UUID REFERENCES users(id),
-    approved_by UUID REFERENCES users(id),
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS payroll_items (
-    id SERIAL PRIMARY KEY,
-    payroll_run_id INTEGER NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
-    employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-    base_salary NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-    days_worked NUMERIC(6,2) NOT NULL DEFAULT 0.00,
-    days_absent NUMERIC(6,2) NOT NULL DEFAULT 0.00,
-    allowances NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-    deductions NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-    net_salary NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-    payment_status VARCHAR(30) DEFAULT 'pending',
-    payment_method VARCHAR(50) DEFAULT 'bank_transfer',
-    notes TEXT,
-    UNIQUE(payroll_run_id, employee_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_payroll_items_run ON payroll_items(payroll_run_id);
-CREATE INDEX IF NOT EXISTS idx_payroll_items_emp ON payroll_items(employee_id);
 
 
 -- ============================================================
