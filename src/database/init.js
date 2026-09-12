@@ -8,15 +8,39 @@ const initializeDatabase = async () => {
     await pool.query(`
       DO $$
       BEGIN
+        -- USERS table columns
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'outlet_id') THEN
             ALTER TABLE users ADD COLUMN outlet_id INTEGER;
           END IF;
         END IF;
 
+        -- EMPLOYEES table columns
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'employees') THEN
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'outlet_id') THEN
             ALTER TABLE employees ADD COLUMN outlet_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'position_id') THEN
+            ALTER TABLE employees ADD COLUMN position_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'reports_to_employee_id') THEN
+            ALTER TABLE employees ADD COLUMN reports_to_employee_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'user_id') THEN
+            ALTER TABLE employees ADD COLUMN user_id UUID UNIQUE;
+          END IF;
+        END IF;
+
+        -- PRODUCTS table columns
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'products') THEN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'preparation_outlet_id') THEN
+            ALTER TABLE products ADD COLUMN preparation_outlet_id INTEGER;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'shots_capacity') THEN
+            ALTER TABLE products ADD COLUMN shots_capacity NUMERIC(10,2) DEFAULT 30;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'is_shot_item') THEN
+            ALTER TABLE products ADD COLUMN is_shot_item BOOLEAN DEFAULT FALSE;
           END IF;
         END IF;
       END $$;
