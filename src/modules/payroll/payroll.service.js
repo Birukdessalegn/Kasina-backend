@@ -195,6 +195,8 @@ const getPayrollSummary = async (periodMonth) => {
   const totalPensionEmployee = items.reduce((sum, it) => sum + Number(it.pension_employee || 0), 0);
   const totalPensionEmployer = items.reduce((sum, it) => sum + Number(it.pension_employer || 0), 0);
 
+  const totalAbsence = items.reduce((sum, it) => sum + Number(it.absence_deduction || 0), 0);
+
   return {
     periodMonth: currentMonth,
     isSaved: !!savedRun,
@@ -207,7 +209,8 @@ const getPayrollSummary = async (periodMonth) => {
       totalNet: Number(totalNet.toFixed(2)),
       totalTax: Number(totalTax.toFixed(2)),
       totalPensionEmployee: Number(totalPensionEmployee.toFixed(2)),
-      totalPensionEmployer: Number(totalPensionEmployer.toFixed(2))
+      totalPensionEmployer: Number(totalPensionEmployer.toFixed(2)),
+      totalAbsence: Number(totalAbsence.toFixed(2))
     },
     items
   };
