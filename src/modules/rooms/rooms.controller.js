@@ -13,7 +13,11 @@ const getRooms = async (req, res) => {
 
 const getRoom = async (req, res) => {
   try {
-    const room = await roomsService.getRoomById(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id <= 0) {
+      return res.status(404).json({ success: false, message: "Room not found" });
+    }
+    const room = await roomsService.getRoomById(id);
     if (!room) {
       return res.status(404).json({ success: false, message: "Room not found" });
     }

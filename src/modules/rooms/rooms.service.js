@@ -80,6 +80,11 @@ const getAllRooms = async ({ status, floor, typeId } = {}) => {
 };
 
 const getRoomById = async (id) => {
+  const numericId = parseInt(id, 10);
+  if (isNaN(numericId) || numericId <= 0) {
+    return null;
+  }
+
   const query = `
     SELECT 
       r.id,
@@ -100,7 +105,7 @@ const getRoomById = async (id) => {
     JOIN room_types rt ON r.room_type_id = rt.id
     WHERE r.id = $1
   `;
-  const { rows } = await pool.query(query, [id]);
+  const { rows } = await pool.query(query, [numericId]);
   return rows[0] || null;
 };
 

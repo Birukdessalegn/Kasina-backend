@@ -17,7 +17,18 @@ const {
 } = require("./room-reservations.controller");
 
 router.use(authenticate);
-router.use(authorize("admin", "manager", "receptionist"));
+router.use(
+  authorize(
+    "admin",
+    "hotel_manager",
+    "manager",
+    "cooperative_manager",
+    "accountant_manager",
+    "finance",
+    "accountant",
+    "receptionist"
+  )
+);
 
 router.get("/", getReservations);
 router.get("/reports/summary", getReports);
