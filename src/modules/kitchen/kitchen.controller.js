@@ -9,9 +9,14 @@ const getKitchenOrders = async (req, res) => {
   try {
     let outletFilter = req.query.kitchen_outlet_id || req.query.outlet_code || req.query.outletId || null;
     
-    // If logged in user is cafe_chef and no explicit filter provided, default to CAFE_KITCHEN
-    if (!outletFilter && req.user?.role === "cafe_chef") {
-      outletFilter = "CAFE_KITCHEN";
+    // Station-based default scoping
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (!outletFilter) {
+      if (userRole === "cafe_chef" || userRole === "cafe_supervisor") {
+        outletFilter = "CAFE_KITCHEN";
+      } else if (userRole === "chef" || userRole === "bar_restaurant_supervisor") {
+        outletFilter = "RESTAURANT_KITCHEN";
+      }
     }
 
     const orders = await kitchenService.getAllKitchenOrders(outletFilter);
