@@ -79,6 +79,12 @@ const initializeDatabase = async () => {
             ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
             ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;
           END IF;
+
+          -- Ensure essential columns exist in room_reservations
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'room_reservations') THEN
+            ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_url TEXT;
+            ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_back_url TEXT;
+          END IF;
         END $$;
       `);
       console.log("✅ Database schema verified and legacy table columns synchronized");

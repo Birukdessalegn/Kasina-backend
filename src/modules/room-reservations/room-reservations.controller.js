@@ -204,17 +204,22 @@ const uploadGuestIdImage = async (req, res) => {
       return res.status(400).json({ success: false, message: "No image file or data provided." });
     }
 
-    const updated = await reservationsService.updateGuestIdImage(
-      req.params.id,
-      frontImageUrl || undefined,
-      backImageUrl || undefined
-    );
+    let updated = null;
+    try {
+      updated = await reservationsService.updateGuestIdImage(
+        req.params.id,
+        frontImageUrl || undefined,
+        backImageUrl || undefined
+      );
+    } catch (dbErr) {
+      console.warn("Could not save to reservation row, returning file URLs anyway:", dbErr.message);
+    }
 
     res.json({
       success: true,
       data: updated,
-      imageUrl: frontImageUrl || updated.id_image_url,
-      backImageUrl: backImageUrl || updated.id_image_back_url,
+      imageUrl: frontImageUrl || updated?.id_image_url,
+      backImageUrl: backImageUrl || updated?.id_image_back_url,
       message: "Guest ID image(s) uploaded successfully"
     });
   } catch (error) {

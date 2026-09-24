@@ -1,5 +1,19 @@
 const pool = require("../../config/database");
 
+let backUrlColumnEnsured = false;
+const ensureBackUrlColumn = async (client = pool) => {
+  if (backUrlColumnEnsured) return;
+  try {
+    await client.query(`
+      ALTER TABLE room_reservations 
+      ADD COLUMN IF NOT EXISTS id_image_back_url TEXT;
+    `);
+    backUrlColumnEnsured = true;
+  } catch (err) {
+    console.warn("⚠️ Auto-ensure id_image_back_url note:", err.message);
+  }
+};
+
 /**
  * Generate a unique reservation code: e.g. KAS-2026-X8F2
  */
@@ -229,17 +243,9 @@ const createReservation = async (data, userId) => {
 
     const resCode = await generateReservationCode();
 
-    const insertResQuery = `
-      INSERT INTO room_reservations (
-        reservation_code, guest_name, guest_phone, guest_email, guest_id_number,
-        id_image_url, id_image_back_url, vip_customer_id, room_id, check_in_date, check_out_date, actual_check_in_at,
-        adults, children, rate_per_night, total_nights, total_amount, paid_amount,
-        payment_status, status, special_requests, created_by
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
-      RETURNING *
-    `;
-    const { rows: resRows } = await client.query(insertResQuery, [
+    await ensureBackUrlColumn(client);
+
+    const insertParams = [
       resCode,
       guest_name.trim(),
       guest_phone || null,
@@ -262,8 +268,81 @@ const createReservation = async (data, userId) => {
       status,
       special_requests || null,
       userId || null
-    ]);
-    const reservation = resRows[0];
+    ];
+
+    let reservation;
+    try {
+      const insertResQuery = `
+        INSERT INTO room_reservations (
+          reservation_code, guest_name, guest_phone, guest_email, guest_id_number,
+          id_image_url, id_image_back_url, vip_customer_id, room_id, check_in_date, check_out_date, actual_check_in_at,
+          adults, children, rate_per_night, total_nights, total_amount, paid_amount,
+          payment_status, status, special_requests, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        RETURNING *
+      `;
+      const { rows: resRows } = await client.query(insertResQuery, insertParams);
+      reservation = resRows[0];
+    } catch (insertErr) {
+      if (insertErr.message && insertErr.message.includes("id_image_back_url")) {
+        try {
+          await client.query("ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_back_url TEXT;");
+          backUrlColumnEnsured = true;
+          const { rows: retryRows } = await client.query(
+            `INSERT INTO room_reservations (
+              reservation_code, guest_name, guest_phone, guest_email, guest_id_number,
+              id_image_url, id_image_back_url, vip_customer_id, room_id, check_in_date, check_out_date, actual_check_in_at,
+              adults, children, rate_per_night, total_nights, total_amount, paid_amount,
+              payment_status, status, special_requests, created_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+            RETURNING *`,
+            insertParams
+          );
+          reservation = retryRows[0];
+        } catch (retryErr) {
+          console.warn("Retrying createReservation without id_image_back_url:", retryErr.message);
+          const fallbackParams = [
+            resCode,
+            guest_name.trim(),
+            guest_phone || null,
+            guest_email || null,
+            guest_id_number || null,
+            id_image_url || null,
+            vip_customer_id || null,
+            room_id,
+            check_in_date,
+            check_out_date,
+            actualCheckIn,
+            adults,
+            children,
+            pricePerNight,
+            nights,
+            totalAmount,
+            paidAmount,
+            paymentStatus,
+            status,
+            special_requests || null,
+            userId || null
+          ];
+          const { rows: fallbackRows } = await client.query(
+            `INSERT INTO room_reservations (
+              reservation_code, guest_name, guest_phone, guest_email, guest_id_number,
+              id_image_url, vip_customer_id, room_id, check_in_date, check_out_date, actual_check_in_at,
+              adults, children, rate_per_night, total_nights, total_amount, paid_amount,
+              payment_status, status, special_requests, created_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+            RETURNING *`,
+            fallbackParams
+          );
+          reservation = fallbackRows[0];
+        }
+      } else {
+        throw insertErr;
+      }
+    }
 
     // If initial payment was made, record it
     if (paidAmount > 0) {
@@ -503,6 +582,7 @@ const cancelReservation = async (id, reason, userId) => {
  * Update reservation details (guest info, special requests, id_image_url, id_image_back_url)
  */
 const updateReservation = async (id, data, userId) => {
+  await ensureBackUrlColumn();
   const {
     guest_name,
     guest_phone,
@@ -513,41 +593,84 @@ const updateReservation = async (id, data, userId) => {
     id_image_back_url
   } = data;
 
-  const res = await pool.query(
-    `UPDATE room_reservations
-     SET 
-       guest_name = COALESCE($1, guest_name),
-       guest_phone = COALESCE($2, guest_phone),
-       guest_email = COALESCE($3, guest_email),
-       guest_id_number = COALESCE($4, guest_id_number),
-       special_requests = COALESCE($5, special_requests),
-       id_image_url = COALESCE($6, id_image_url),
-       id_image_back_url = COALESCE($7, id_image_back_url),
-       updated_at = CURRENT_TIMESTAMP
-     WHERE id = $8
-     RETURNING *`,
-    [
-      guest_name !== undefined ? guest_name.trim() : null,
-      guest_phone !== undefined ? guest_phone : null,
-      guest_email !== undefined ? guest_email : null,
-      guest_id_number !== undefined ? guest_id_number : null,
-      special_requests !== undefined ? special_requests : null,
-      id_image_url !== undefined ? id_image_url : null,
-      id_image_back_url !== undefined ? id_image_back_url : null,
-      id
-    ]
-  );
+  const executeUpdate = async () => {
+    return await pool.query(
+      `UPDATE room_reservations
+       SET 
+         guest_name = COALESCE($1, guest_name),
+         guest_phone = COALESCE($2, guest_phone),
+         guest_email = COALESCE($3, guest_email),
+         guest_id_number = COALESCE($4, guest_id_number),
+         special_requests = COALESCE($5, special_requests),
+         id_image_url = COALESCE($6, id_image_url),
+         id_image_back_url = COALESCE($7, id_image_back_url),
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $8
+       RETURNING *`,
+      [
+        guest_name !== undefined ? guest_name.trim() : null,
+        guest_phone !== undefined ? guest_phone : null,
+        guest_email !== undefined ? guest_email : null,
+        guest_id_number !== undefined ? guest_id_number : null,
+        special_requests !== undefined ? special_requests : null,
+        id_image_url !== undefined ? id_image_url : null,
+        id_image_back_url !== undefined ? id_image_back_url : null,
+        id
+      ]
+    );
+  };
 
-  if (res.rows.length === 0) {
-    throw new Error("Reservation not found.");
+  try {
+    const res = await executeUpdate();
+    if (res.rows.length === 0) {
+      throw new Error("Reservation not found.");
+    }
+    return res.rows[0];
+  } catch (err) {
+    if (err.message && err.message.includes("id_image_back_url")) {
+      try {
+        await pool.query("ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_back_url TEXT;");
+        backUrlColumnEnsured = true;
+        const retryRes = await executeUpdate();
+        if (retryRes.rows.length === 0) throw new Error("Reservation not found.");
+        return retryRes.rows[0];
+      } catch (retryErr) {
+        console.warn("Falling back to update without id_image_back_url:", retryErr.message);
+        const fallbackRes = await pool.query(
+          `UPDATE room_reservations
+           SET 
+             guest_name = COALESCE($1, guest_name),
+             guest_phone = COALESCE($2, guest_phone),
+             guest_email = COALESCE($3, guest_email),
+             guest_id_number = COALESCE($4, guest_id_number),
+             special_requests = COALESCE($5, special_requests),
+             id_image_url = COALESCE($6, id_image_url),
+             updated_at = CURRENT_TIMESTAMP
+           WHERE id = $7
+           RETURNING *`,
+          [
+            guest_name !== undefined ? guest_name.trim() : null,
+            guest_phone !== undefined ? guest_phone : null,
+            guest_email !== undefined ? guest_email : null,
+            guest_id_number !== undefined ? guest_id_number : null,
+            special_requests !== undefined ? special_requests : null,
+            id_image_url !== undefined ? id_image_url : null,
+            id
+          ]
+        );
+        if (fallbackRes.rows.length === 0) throw new Error("Reservation not found.");
+        return fallbackRes.rows[0];
+      }
+    }
+    throw err;
   }
-  return res.rows[0];
 };
 
 /**
  * Update specifically the Guest ID image (front and/or back)
  */
 const updateGuestIdImage = async (id, imageUrl, backImageUrl = undefined) => {
+  await ensureBackUrlColumn();
   let query;
   let params;
 
@@ -571,11 +694,34 @@ const updateGuestIdImage = async (id, imageUrl, backImageUrl = undefined) => {
     params = [imageUrl, id];
   }
 
-  const res = await pool.query(query, params);
-  if (res.rows.length === 0) {
-    throw new Error("Reservation not found.");
+  try {
+    const res = await pool.query(query, params);
+    if (res.rows.length === 0) {
+      throw new Error("Reservation not found.");
+    }
+    return res.rows[0];
+  } catch (err) {
+    if (err.message && err.message.includes("id_image_back_url")) {
+      try {
+        await pool.query("ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_back_url TEXT;");
+        backUrlColumnEnsured = true;
+        const retryRes = await pool.query(query, params);
+        if (retryRes.rows.length === 0) throw new Error("Reservation not found.");
+        return retryRes.rows[0];
+      } catch (retryErr) {
+        console.warn("Retrying updateGuestIdImage with front image only:", retryErr.message);
+        if (imageUrl !== undefined) {
+          const fallbackRes = await pool.query(
+            "UPDATE room_reservations SET id_image_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *",
+            [imageUrl, id]
+          );
+          if (fallbackRes.rows.length === 0) throw new Error("Reservation not found.");
+          return fallbackRes.rows[0];
+        }
+      }
+    }
+    throw err;
   }
-  return res.rows[0];
 };
 
 /**

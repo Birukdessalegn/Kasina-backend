@@ -700,6 +700,7 @@ CREATE TABLE IF NOT EXISTS room_reservations (
     guest_email VARCHAR(150),
     guest_id_number VARCHAR(100),
     id_image_url TEXT,
+    id_image_back_url TEXT,
     room_id INTEGER NOT NULL REFERENCES rooms(id),
     check_in_date DATE NOT NULL,
     check_out_date DATE NOT NULL,
