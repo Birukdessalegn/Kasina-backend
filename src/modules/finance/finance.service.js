@@ -173,6 +173,166 @@ const verifyCashierShift = async (id, status, notes, verifiedBy, verifiedByName 
 
 
 // =========================================================
+// GET UNIFIED HOTEL FINANCE OVERVIEW (P&L, REVENUE, EXPENSES)
+// =========================================================
+
+const getFinanceOverview = async (filters = {}) => {
+  const { timeframe = "all", startDate, endDate } = filters;
+
+  // Build SQL date condition generator
+  const buildDateCondition = (dateCol, paramOffset = 1) => {
+    if (startDate && endDate) {
+      return {
+        clause: ` AND ${dateCol}::date >= $${paramOffset} AND ${dateCol}::date <= $${paramOffset + 1}`,
+        params: [startDate, endDate],
+      };
+    } else if (timeframe === "today") {
+      return {
+        clause: ` AND ${dateCol}::date = CURRENT_DATE`,
+        params: [],
+      };
+    } else if (timeframe === "week") {
+      return {
+        clause: ` AND ${dateCol}::date >= CURRENT_DATE - INTERVAL '7 days'`,
+        params: [],
+      };
+    } else if (timeframe === "month") {
+      return {
+        clause: ` AND ${dateCol}::date >= CURRENT_DATE - INTERVAL '30 days'`,
+        params: [],
+      };
+    }
+    return { clause: "", params: [] };
+  };
+
+  // 1. Room Revenue Aggregation
+  const roomDate = buildDateCondition("COALESCE(actual_check_in_at, check_in_date, created_at)");
+  const roomSql = `
+    SELECT 
+      COALESCE(SUM(paid_amount), 0)::float AS total_paid,
+      COALESCE(SUM(CASE WHEN payment_status = 'unpaid' THEN total_amount ELSE GREATEST(0, total_amount - paid_amount) END), 0)::float AS total_unpaid,
+      COUNT(id)::int AS total_reservations,
+      COUNT(CASE WHEN status = 'checked_in' THEN 1 END)::int AS active_checked_in,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, 'cash')) = 'cash' THEN paid_amount ELSE 0 END), 0)::float AS cash_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('telebirr', 'tele_birr') THEN paid_amount ELSE 0 END), 0)::float AS telebirr_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('cbe_birr', 'cbebirr', 'cbe') THEN paid_amount ELSE 0 END), 0)::float AS cbe_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('card', 'pos', 'visa', 'mastercard') THEN paid_amount ELSE 0 END), 0)::float AS card_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('bank_transfer', 'bank', 'transfer') THEN paid_amount ELSE 0 END), 0)::float AS bank_paid
+    FROM room_reservations
+    WHERE status != 'cancelled' ${roomDate.clause}
+  `;
+  const roomRes = await pool.query(roomSql, roomDate.params);
+  const roomData = roomRes.rows[0] || {};
+
+  // 2. F&B / POS Orders Revenue Aggregation
+  const orderDate = buildDateCondition("created_at");
+  const orderSql = `
+    SELECT 
+      COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE COALESCE(paid_amount, 0) END), 0)::float AS total_paid,
+      COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN (total_amount - COALESCE(paid_amount, 0)) ELSE 0 END), 0)::float AS total_unpaid,
+      COUNT(id)::int AS total_orders,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, 'cash')) = 'cash' THEN total_amount ELSE 0 END), 0)::float AS cash_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('telebirr', 'tele_birr') THEN total_amount ELSE 0 END), 0)::float AS telebirr_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('cbe_birr', 'cbebirr', 'cbe') THEN total_amount ELSE 0 END), 0)::float AS cbe_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('card', 'pos', 'visa') THEN total_amount ELSE 0 END), 0)::float AS card_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('bank_transfer', 'bank') THEN total_amount ELSE 0 END), 0)::float AS bank_paid
+    FROM orders
+    WHERE status != 'cancelled' ${orderDate.clause}
+  `;
+  const orderRes = await pool.query(orderSql, orderDate.params);
+  const orderData = orderRes.rows[0] || {};
+
+  // 3. Expenses Aggregation
+  const expDate = buildDateCondition("COALESCE(expense_date, created_at)");
+  const expSql = `
+    SELECT 
+      COALESCE(SUM(amount), 0)::float AS total_expenses,
+      COUNT(id)::int AS count_expenses
+    FROM expenses
+    WHERE 1=1 ${expDate.clause}
+  `;
+  const expRes = await pool.query(expSql, expDate.params).catch(() => ({ rows: [{ total_expenses: 0, count_expenses: 0 }] }));
+  const expData = expRes.rows[0] || {};
+
+  // 4. Expenses by Category
+  const expCatSql = `
+    SELECT 
+      COALESCE(ec.name, 'Uncategorized') AS category_name,
+      COALESCE(SUM(e.amount), 0)::float AS total_amount
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON e.category_id = ec.id
+    WHERE 1=1 ${expDate.clause}
+    GROUP BY ec.name
+    ORDER BY total_amount DESC
+    LIMIT 6
+  `;
+  const expCatRes = await pool.query(expCatSql, expDate.params).catch(() => ({ rows: [] }));
+
+  // 5. Purchases Aggregation
+  const purDate = buildDateCondition("COALESCE(purchase_date, created_at)");
+  const purSql = `
+    SELECT 
+      COALESCE(SUM(COALESCE(paid_amount, total)), 0)::float AS total_purchases,
+      COUNT(id)::int AS count_purchases
+    FROM purchase_orders
+    WHERE status != 'cancelled' ${purDate.clause}
+  `;
+  const purRes = await pool.query(purSql, purDate.params).catch(() => ({ rows: [{ total_purchases: 0, count_purchases: 0 }] }));
+  const purData = purRes.rows[0] || {};
+
+  // Totals & P&L calculations
+  const roomRevenue = parseFloat(roomData.total_paid || 0);
+  const posRevenue = parseFloat(orderData.total_paid || 0);
+  const totalRevenue = roomRevenue + posRevenue;
+
+  const totalExpenses = parseFloat(expData.total_expenses || 0);
+  const totalPurchases = parseFloat(purData.total_purchases || 0);
+  const totalOutflows = totalExpenses + totalPurchases;
+
+  const netOperatingIncome = totalRevenue - totalOutflows;
+  const profitMargin = totalRevenue > 0 ? parseFloat(((netOperatingIncome / totalRevenue) * 100).toFixed(1)) : 0;
+
+  const paymentMethods = {
+    cash: (roomData.cash_paid || 0) + (orderData.cash_paid || 0),
+    telebirr: (roomData.telebirr_paid || 0) + (orderData.telebirr_paid || 0),
+    cbeBirr: (roomData.cbe_paid || 0) + (orderData.cbe_paid || 0),
+    card: (roomData.card_paid || 0) + (orderData.card_paid || 0),
+    bankTransfer: (roomData.bank_paid || 0) + (orderData.bank_paid || 0),
+  };
+
+  return {
+    timeframe,
+    startDate: startDate || null,
+    endDate: endDate || null,
+    summary: {
+      totalRevenue,
+      roomRevenue,
+      posRevenue,
+      totalExpenses,
+      totalPurchases,
+      totalOutflows,
+      netOperatingIncome,
+      profitMargin,
+    },
+    paymentMethods,
+    channels: {
+      rooms: {
+        totalPaid: roomRevenue,
+        totalUnpaid: parseFloat(roomData.total_unpaid || 0),
+        reservationsCount: parseInt(roomData.total_reservations || 0, 10),
+        activeCheckedIn: parseInt(roomData.active_checked_in || 0, 10),
+      },
+      pos: {
+        totalPaid: posRevenue,
+        totalUnpaid: parseFloat(orderData.total_unpaid || 0),
+        ordersCount: parseInt(orderData.total_orders || 0, 10),
+      },
+    },
+    expensesByCategory: expCatRes.rows,
+  };
+};
+
+// =========================================================
 // EXPORT
 // =========================================================
 
@@ -180,4 +340,5 @@ module.exports = {
   getCashierShifts,
   getCashierShiftById,
   verifyCashierShift,
+  getFinanceOverview,
 };

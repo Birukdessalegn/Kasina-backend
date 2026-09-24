@@ -105,6 +105,34 @@ const verifyCashierShift = async (req, res) => {
 
 
 // =========================================================
+// GET UNIFIED FINANCE OVERVIEW
+// =========================================================
+
+const getFinanceOverview = async (req, res) => {
+  try {
+    const { timeframe, startDate, endDate } = req.query;
+    const overview = await financeService.getFinanceOverview({
+      timeframe,
+      startDate,
+      endDate,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: overview,
+    });
+  } catch (error) {
+    console.error("Error getting finance overview:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error generating financial overview",
+      error: error.message,
+    });
+  }
+};
+
+
+// =========================================================
 // EXPORT
 // =========================================================
 
@@ -112,4 +140,5 @@ module.exports = {
   getCashierShifts,
   getCashierShiftById,
   verifyCashierShift,
+  getFinanceOverview,
 };

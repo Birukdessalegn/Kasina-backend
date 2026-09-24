@@ -4,6 +4,12 @@ const financeController = require("./finance.controller");
 const authenticate = require("../../middleware/auth.middleware");
 
 // =========================================================
+// FINANCE OVERVIEW / P&L
+// =========================================================
+
+router.get("/overview", authenticate, financeController.getFinanceOverview);
+
+// =========================================================
 // CASHIER SHIFT RECONCILIATION ROUTES
 // =========================================================
 
