@@ -9,6 +9,7 @@ const {
   createReservation,
   updateReservation,
   uploadGuestIdImage,
+  uploadStandaloneGuestId,
   checkIn,
   checkOut,
   addPayment,
@@ -33,6 +34,7 @@ router.use(
 router.get("/", getReservations);
 router.get("/reports/summary", getReports);
 router.get("/:id", getReservation);
+router.post("/upload-id", uploadIdImage.single("id_image"), uploadStandaloneGuestId);
 router.post("/", createReservation);
 router.put("/:id", updateReservation);
 router.post("/:id/upload-id", uploadIdImage.single("id_image"), uploadGuestIdImage);

@@ -48,20 +48,24 @@ const guestIdStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname).toLowerCase();
+    let ext = path.extname(file.originalname || "").toLowerCase();
+    if (!ext) {
+      if (file.mimetype === "image/png") ext = ".png";
+      else if (file.mimetype === "image/webp") ext = ".webp";
+      else ext = ".jpg";
+    }
     cb(null, `guest-id-${uniqueSuffix}${ext}`);
   },
 });
 
 // File filter for images
 const imageFileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|webp|gif/;
-  const extName = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
-  const mimeType = allowedTypes.test(file.mimetype);
+  const allowedTypes = /jpeg|jpg|png|webp|gif|bmp|heic|heif/;
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  const extValid = ext ? allowedTypes.test(ext) : true;
+  const mimeValid = file.mimetype ? (file.mimetype.startsWith("image/") || allowedTypes.test(file.mimetype)) : false;
 
-  if (extName && mimeType) {
+  if (mimeValid || extValid) {
     cb(null, true);
   } else {
     cb(new Error("Only image files (.jpg, .jpeg, .png, .webp, .gif) are allowed!"));
