@@ -94,4 +94,5 @@ module.exports = {
   uploadProductImage,
   uploadPaymentReceipt,
   uploadIdImage,
+  uploadIdImages: uploadIdImage.any(),
 };

@@ -171,6 +171,7 @@ const createReservation = async (data, userId) => {
       guest_email,
       guest_id_number,
       id_image_url,
+      id_image_back_url,
       vip_customer_id,
       room_id,
       check_in_date,
@@ -231,11 +232,11 @@ const createReservation = async (data, userId) => {
     const insertResQuery = `
       INSERT INTO room_reservations (
         reservation_code, guest_name, guest_phone, guest_email, guest_id_number,
-        id_image_url, vip_customer_id, room_id, check_in_date, check_out_date, actual_check_in_at,
+        id_image_url, id_image_back_url, vip_customer_id, room_id, check_in_date, check_out_date, actual_check_in_at,
         adults, children, rate_per_night, total_nights, total_amount, paid_amount,
         payment_status, status, special_requests, created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING *
     `;
     const { rows: resRows } = await client.query(insertResQuery, [
@@ -245,6 +246,7 @@ const createReservation = async (data, userId) => {
       guest_email || null,
       guest_id_number || null,
       id_image_url || null,
+      id_image_back_url || null,
       vip_customer_id || null,
       room_id,
       check_in_date,
@@ -498,7 +500,7 @@ const cancelReservation = async (id, reason, userId) => {
 };
 
 /**
- * Update reservation details (guest info, special requests, id_image_url)
+ * Update reservation details (guest info, special requests, id_image_url, id_image_back_url)
  */
 const updateReservation = async (id, data, userId) => {
   const {
@@ -507,7 +509,8 @@ const updateReservation = async (id, data, userId) => {
     guest_email,
     guest_id_number,
     special_requests,
-    id_image_url
+    id_image_url,
+    id_image_back_url
   } = data;
 
   const res = await pool.query(
@@ -519,8 +522,9 @@ const updateReservation = async (id, data, userId) => {
        guest_id_number = COALESCE($4, guest_id_number),
        special_requests = COALESCE($5, special_requests),
        id_image_url = COALESCE($6, id_image_url),
+       id_image_back_url = COALESCE($7, id_image_back_url),
        updated_at = CURRENT_TIMESTAMP
-     WHERE id = $7
+     WHERE id = $8
      RETURNING *`,
     [
       guest_name !== undefined ? guest_name.trim() : null,
@@ -529,6 +533,7 @@ const updateReservation = async (id, data, userId) => {
       guest_id_number !== undefined ? guest_id_number : null,
       special_requests !== undefined ? special_requests : null,
       id_image_url !== undefined ? id_image_url : null,
+      id_image_back_url !== undefined ? id_image_back_url : null,
       id
     ]
   );
@@ -540,16 +545,33 @@ const updateReservation = async (id, data, userId) => {
 };
 
 /**
- * Update specifically the Guest ID image
+ * Update specifically the Guest ID image (front and/or back)
  */
-const updateGuestIdImage = async (id, imageUrl) => {
-  const res = await pool.query(
-    `UPDATE room_reservations
-     SET id_image_url = $1, updated_at = CURRENT_TIMESTAMP
-     WHERE id = $2
-     RETURNING *`,
-    [imageUrl, id]
-  );
+const updateGuestIdImage = async (id, imageUrl, backImageUrl = undefined) => {
+  let query;
+  let params;
+
+  if (backImageUrl !== undefined && imageUrl !== undefined) {
+    query = `UPDATE room_reservations
+             SET id_image_url = $1, id_image_back_url = $2, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $3
+             RETURNING *`;
+    params = [imageUrl, backImageUrl, id];
+  } else if (backImageUrl !== undefined) {
+    query = `UPDATE room_reservations
+             SET id_image_back_url = $1, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2
+             RETURNING *`;
+    params = [backImageUrl, id];
+  } else {
+    query = `UPDATE room_reservations
+             SET id_image_url = $1, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2
+             RETURNING *`;
+    params = [imageUrl, id];
+  }
+
+  const res = await pool.query(query, params);
   if (res.rows.length === 0) {
     throw new Error("Reservation not found.");
   }

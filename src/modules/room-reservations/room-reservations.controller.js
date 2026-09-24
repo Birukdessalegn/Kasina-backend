@@ -67,8 +67,16 @@ const createReservation = async (req, res) => {
     if (payload.id_image_url && payload.id_image_url.startsWith("data:image/")) {
       payload.id_image_url = saveBase64Image(payload.id_image_url);
     }
+    if (!payload.id_image_back_url && payload.id_image_back_preview) {
+      payload.id_image_back_url = payload.id_image_back_preview;
+    }
+    if (payload.id_image_back_url && payload.id_image_back_url.startsWith("data:image/")) {
+      payload.id_image_back_url = saveBase64Image(payload.id_image_back_url);
+    }
     delete payload.id_image_preview;
     delete payload.id_image_file;
+    delete payload.id_image_back_preview;
+    delete payload.id_image_back_file;
 
     const reservation = await reservationsService.createReservation(payload, userId);
     res.status(201).json({ success: true, data: reservation });
@@ -143,8 +151,16 @@ const updateReservation = async (req, res) => {
     if (payload.id_image_url && payload.id_image_url.startsWith("data:image/")) {
       payload.id_image_url = saveBase64Image(payload.id_image_url);
     }
+    if (!payload.id_image_back_url && payload.id_image_back_preview) {
+      payload.id_image_back_url = payload.id_image_back_preview;
+    }
+    if (payload.id_image_back_url && payload.id_image_back_url.startsWith("data:image/")) {
+      payload.id_image_back_url = saveBase64Image(payload.id_image_back_url);
+    }
     delete payload.id_image_preview;
     delete payload.id_image_file;
+    delete payload.id_image_back_preview;
+    delete payload.id_image_back_file;
 
     const updated = await reservationsService.updateReservation(req.params.id, payload, userId);
     res.json({ success: true, data: updated, message: "Reservation updated successfully" });
@@ -156,21 +172,50 @@ const updateReservation = async (req, res) => {
 
 const uploadGuestIdImage = async (req, res) => {
   try {
-    let imageUrl = null;
-    if (req.file) {
-      imageUrl = `/uploads/guest-ids/${req.file.filename}`;
-    } else if (req.body.id_image_base64 || req.body.id_image_preview || req.body.id_image_url) {
-      imageUrl = saveBase64Image(req.body.id_image_base64 || req.body.id_image_preview || req.body.id_image_url);
+    let frontImageUrl = null;
+    let backImageUrl = null;
+
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files) {
+        if (file.fieldname === "id_image_back") {
+          backImageUrl = `/uploads/guest-ids/${file.filename}`;
+        } else if (file.fieldname === "id_image_front" || file.fieldname === "id_image") {
+          frontImageUrl = `/uploads/guest-ids/${file.filename}`;
+        }
+      }
+    } else if (req.file) {
+      if (req.body.side === "back" || req.query.side === "back") {
+        backImageUrl = `/uploads/guest-ids/${req.file.filename}`;
+      } else {
+        frontImageUrl = `/uploads/guest-ids/${req.file.filename}`;
+      }
     }
-    if (!imageUrl) {
+
+    if (req.body.id_image_front || req.body.id_image_url || req.body.id_image_preview) {
+      const fData = req.body.id_image_front || req.body.id_image_url || req.body.id_image_preview;
+      frontImageUrl = saveBase64Image(fData);
+    }
+    if (req.body.id_image_back || req.body.id_image_back_url || req.body.id_image_back_preview) {
+      const bData = req.body.id_image_back || req.body.id_image_back_url || req.body.id_image_back_preview;
+      backImageUrl = saveBase64Image(bData);
+    }
+
+    if (!frontImageUrl && !backImageUrl) {
       return res.status(400).json({ success: false, message: "No image file or data provided." });
     }
-    const updated = await reservationsService.updateGuestIdImage(req.params.id, imageUrl);
+
+    const updated = await reservationsService.updateGuestIdImage(
+      req.params.id,
+      frontImageUrl || undefined,
+      backImageUrl || undefined
+    );
+
     res.json({
       success: true,
       data: updated,
-      imageUrl,
-      message: "Guest ID image uploaded successfully"
+      imageUrl: frontImageUrl || updated.id_image_url,
+      backImageUrl: backImageUrl || updated.id_image_back_url,
+      message: "Guest ID image(s) uploaded successfully"
     });
   } catch (error) {
     console.error("Error uploading guest ID image:", error);
@@ -180,19 +225,44 @@ const uploadGuestIdImage = async (req, res) => {
 
 const uploadStandaloneGuestId = async (req, res) => {
   try {
-    let imageUrl = null;
-    if (req.file) {
-      imageUrl = `/uploads/guest-ids/${req.file.filename}`;
-    } else if (req.body.id_image_base64 || req.body.id_image_preview || req.body.id_image_url) {
-      imageUrl = saveBase64Image(req.body.id_image_base64 || req.body.id_image_preview || req.body.id_image_url);
+    let frontImageUrl = null;
+    let backImageUrl = null;
+
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files) {
+        if (file.fieldname === "id_image_back") {
+          backImageUrl = `/uploads/guest-ids/${file.filename}`;
+        } else if (file.fieldname === "id_image_front" || file.fieldname === "id_image") {
+          frontImageUrl = `/uploads/guest-ids/${file.filename}`;
+        }
+      }
+    } else if (req.file) {
+      if (req.body.side === "back" || req.query.side === "back") {
+        backImageUrl = `/uploads/guest-ids/${req.file.filename}`;
+      } else {
+        frontImageUrl = `/uploads/guest-ids/${req.file.filename}`;
+      }
     }
-    if (!imageUrl) {
+
+    if (req.body.id_image_front || req.body.id_image_url || req.body.id_image_preview) {
+      const fData = req.body.id_image_front || req.body.id_image_url || req.body.id_image_preview;
+      frontImageUrl = saveBase64Image(fData);
+    }
+    if (req.body.id_image_back || req.body.id_image_back_url || req.body.id_image_back_preview) {
+      const bData = req.body.id_image_back || req.body.id_image_back_url || req.body.id_image_back_preview;
+      backImageUrl = saveBase64Image(bData);
+    }
+
+    if (!frontImageUrl && !backImageUrl) {
       return res.status(400).json({ success: false, message: "No image file or data provided." });
     }
+
     res.json({
       success: true,
-      imageUrl,
-      message: "Guest ID image uploaded successfully"
+      imageUrl: frontImageUrl,
+      frontImageUrl,
+      backImageUrl,
+      message: "Guest ID image(s) uploaded successfully"
     });
   } catch (error) {
     console.error("Error uploading guest ID image:", error);
