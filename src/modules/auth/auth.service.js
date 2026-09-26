@@ -42,31 +42,29 @@ const loginUser = async (username, password) => {
       u.password_hash,
       u.role_id,
       u.status,
-      u.outlet_id AS user_outlet_id,
       r.name AS role,
       e.id AS employee_id,
       e.employee_code,
       e.first_name,
       e.last_name,
-      e.status AS employee_status,
-      e.department_id,
-      d.name AS department_name,
-      d.code AS department_code,
-      COALESCE(e.outlet_id, u.outlet_id) AS outlet_id,
-      o.name AS outlet_name,
-      o.code AS outlet_code,
-      o.type AS outlet_type,
-      e.position_id,
-      pos.title AS position_title,
-      e.reports_to_employee_id,
-      CONCAT(sup.first_name, ' ', sup.last_name) AS reports_to_name
+      TRIM(CONCAT(e.first_name, ' ', e.last_name)) AS employee_name,
+      e.status AS employee_status
      FROM users u
      LEFT JOIN roles r ON u.role_id = r.id
-     LEFT JOIN employees e ON e.user_id = u.id
-     LEFT JOIN departments d ON e.department_id = d.id
-     LEFT JOIN outlets o ON o.id = COALESCE(e.outlet_id, u.outlet_id)
-     LEFT JOIN positions pos ON e.position_id = pos.id
-     LEFT JOIN employees sup ON e.reports_to_employee_id = sup.id
+     LEFT JOIN LATERAL (
+       SELECT id, employee_code, first_name, last_name, phone, status
+       FROM employees
+       WHERE user_id = u.id
+          OR (u.email IS NOT NULL AND email IS NOT NULL AND LOWER(email) = LOWER(u.email))
+          OR (LOWER(first_name) = LOWER(u.username))
+       ORDER BY
+         CASE
+           WHEN user_id = u.id THEN 1
+           WHEN u.email IS NOT NULL AND email IS NOT NULL AND LOWER(email) = LOWER(u.email) THEN 2
+           ELSE 3
+         END ASC
+       LIMIT 1
+     ) e ON true
      WHERE LOWER(TRIM(u.username)) = LOWER(TRIM($1))`,
     [username]
   );
@@ -76,6 +74,14 @@ const loginUser = async (username, password) => {
   }
 
   const user = result.rows[0];
+
+  console.log("LOGIN DEBUG:", {
+    username: user.username,
+    userId: user.id,
+    roleId: user.role_id,
+    status: user.status,
+    employeeStatus: user.employee_status,
+  });
 
   // Check account status and linked employee status
   if (user.status !== "active" || (user.employee_status && user.employee_status !== "active")) {
@@ -92,17 +98,21 @@ const loginUser = async (username, password) => {
     throw new Error("Invalid username or password");
   }
 
-  // Enforce attendance check-in for Waiters, Baristas and Bartenders
+  // Enforce attendance check-in for Waiters and Bartenders
   const roleName = user.role?.toLowerCase();
-  const shiftAttendanceRoles = ["waiter", "cafe_waiter", "bartender", "barista"];
-  if (shiftAttendanceRoles.includes(roleName)) {
-    const employeeId = user.employee_id;
+  if (roleName === "waiter" || roleName === "bartender") {
+    const employeeRes = await pool.query(
+      "SELECT id FROM employees WHERE user_id = $1",
+      [user.id]
+    );
 
-    if (!employeeId) {
+    if (employeeRes.rows.length === 0) {
       throw new Error(
         "No employee record associated with this account. Please contact management."
       );
     }
+
+    const employeeId = employeeRes.rows[0].id;
 
     // Check if there is an active check-in record for current shift
     const attendanceCheck = await pool.query(
@@ -127,17 +137,15 @@ const loginUser = async (username, password) => {
     }
   }
 
-  // Create JWT with organizational scope
+  // Create JWT
   const token = jwt.sign(
     {
       id: user.id,
       username: user.username,
       roleId: user.role_id,
       role: user.role,
-      employeeId: user.employee_id,
-      outletId: user.outlet_id,
-      outletCode: user.outlet_code,
-      departmentId: user.department_id,
+      employee_id: user.employee_id || null,
+      employeeId: user.employee_id || null,
     },
     process.env.JWT_SECRET,
     {
@@ -151,6 +159,8 @@ const loginUser = async (username, password) => {
     [user.id]
   );
 
+  const empName = user.employee_name && user.employee_name.trim() !== "" ? user.employee_name.trim() : null;
+
   return {
     token,
     user: {
@@ -159,26 +169,113 @@ const loginUser = async (username, password) => {
       email: user.email,
       roleId: user.role_id,
       role: user.role,
-      employeeId: user.employee_id,
-      employeeCode: user.employee_code,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      departmentId: user.department_id,
-      departmentName: user.department_name,
-      departmentCode: user.department_code,
-      outletId: user.outlet_id,
-      outletName: user.outlet_name,
-      outletCode: user.outlet_code,
-      outletType: user.outlet_type,
-      positionId: user.position_id,
-      positionTitle: user.position_title,
-      reportsToEmployeeId: user.reports_to_employee_id,
-      reportsToName: user.reports_to_name,
+      employee_id: user.employee_id || null,
+      employeeId: user.employee_id || null,
+      employee_code: user.employee_code || null,
+      first_name: user.first_name || null,
+      last_name: user.last_name || null,
+      employee_name: empName,
+      name: empName || user.username,
     },
   };
+};
+
+const getProfile = async (userId) => {
+  const result = await pool.query(
+    `SELECT
+      u.id,
+      u.username,
+      u.email,
+      u.role_id,
+      u.status,
+      r.name AS role,
+      e.id AS employee_id,
+      e.employee_code,
+      e.first_name,
+      e.last_name,
+      TRIM(CONCAT(e.first_name, ' ', e.last_name)) AS employee_name,
+      e.phone
+     FROM users u
+     LEFT JOIN roles r ON u.role_id = r.id
+     LEFT JOIN LATERAL (
+       SELECT id, employee_code, first_name, last_name, phone, status
+       FROM employees
+       WHERE user_id = u.id
+          OR (u.email IS NOT NULL AND email IS NOT NULL AND LOWER(email) = LOWER(u.email))
+          OR (LOWER(first_name) = LOWER(u.username))
+       ORDER BY
+         CASE
+           WHEN user_id = u.id THEN 1
+           WHEN u.email IS NOT NULL AND email IS NOT NULL AND LOWER(email) = LOWER(u.email) THEN 2
+           ELSE 3
+         END ASC
+       LIMIT 1
+     ) e ON true
+     WHERE u.id = $1`,
+    [userId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error("User not found");
+  }
+
+  const user = result.rows[0];
+  const empName = user.employee_name && user.employee_name.trim() !== "" ? user.employee_name.trim() : null;
+
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    roleId: user.role_id,
+    role: user.role,
+    employee_id: user.employee_id || null,
+    employeeId: user.employee_id || null,
+    employee_code: user.employee_code || null,
+    first_name: user.first_name || null,
+    last_name: user.last_name || null,
+    employee_name: empName,
+    name: empName || user.username,
+    phone: user.phone || null,
+  };
+};
+
+const changePassword = async (userId, currentPassword, newPassword) => {
+  if (!currentPassword || !newPassword) {
+    throw new Error("Current password and new password are required");
+  }
+
+  if (typeof newPassword !== "string" || newPassword.trim().length < 6) {
+    throw new Error("New password must be at least 6 characters long");
+  }
+
+  const result = await pool.query(
+    "SELECT id, password_hash FROM users WHERE id = $1",
+    [userId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error("User not found");
+  }
+
+  const user = result.rows[0];
+
+  const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+  if (!isMatch) {
+    throw new Error("Incorrect current password");
+  }
+
+  const hashedNewPassword = await bcrypt.hash(newPassword.trim(), 10);
+  await pool.query(
+    "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+    [hashedNewPassword, userId]
+  );
+
+  return { success: true };
 };
 
 module.exports = {
   registerUser,
   loginUser,
+  getProfile,
+  changePassword,
 };

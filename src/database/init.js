@@ -100,6 +100,21 @@ const initializeDatabase = async () => {
           END IF;
 
           
+          -- Ensure payment_accounts table exists
+          CREATE TABLE IF NOT EXISTS payment_accounts (
+            id SERIAL PRIMARY KEY,
+            account_type VARCHAR(50) NOT NULL,
+            provider VARCHAR(100) NOT NULL,
+            account_number VARCHAR(100) NOT NULL,
+            account_holder VARCHAR(150),
+            notes VARCHAR(255),
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_payment_accounts_active ON payment_accounts(is_active);
+
           -- Ensure recurring_expenses table exists
           CREATE TABLE IF NOT EXISTS recurring_expenses (
             id SERIAL PRIMARY KEY,

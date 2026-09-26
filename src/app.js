@@ -25,6 +25,7 @@ const roomReservationsRoutes = require("./modules/room-reservations/room-reserva
 const recipesRoutes = require("./modules/recipes/recipes.routes");
 const housekeepingRoutes = require("./modules/housekeeping/housekeeping.routes");
 const payrollRoutes = require("./modules/payroll/payroll.routes");
+const paymentAccountsRoutes = require("./modules/payment_accounts/payment_accounts.routes");
 
 const app = express();
 
@@ -112,6 +113,7 @@ app.use("/api/room-reservations", roomReservationsRoutes);
 app.use("/api/recipes", recipesRoutes);
 app.use("/api/housekeeping", housekeepingRoutes);
 app.use("/api/payroll", payrollRoutes);
+app.use("/api/payment-accounts", paymentAccountsRoutes);
 
 // Test route
 app.get("/", (req, res) => {
