@@ -61,6 +61,24 @@ const initializeDatabase = async () => {
             UPDATE positions SET title = 'Receptionist' WHERE LOWER(title) LIKE '%receptionist%cashier%' OR code = 'POS_RECEPTIONIST';
           END IF;
 
+          -- Ensure Bar & Restaurant outlet exists
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'outlets') THEN
+            INSERT INTO outlets (name, code, type, department_id)
+            VALUES ('Bar & Restaurant', 'BAR_RESTAURANT', 'pos', (SELECT id FROM departments WHERE code = 'SERVICE' OR name = 'Service' LIMIT 1))
+            ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type;
+          END IF;
+
+          -- Ensure Cafe Cashier, Bar & Restaurant Cashier, and Bar & Restaurant Waiter positions exist
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'positions') THEN
+            INSERT INTO positions (title, code, department_id, default_role_id, description)
+            VALUES 
+              ('Cafe Cashier', 'POS_CAFE_CASHIER', (SELECT id FROM departments WHERE code = 'SERVICE' OR name = 'Service' LIMIT 1), (SELECT id FROM roles WHERE name = 'cashier' LIMIT 1), 'Cafe POS Cashier'),
+              ('Bar & Restaurant Cashier', 'POS_BAR_REST_CASHIER', (SELECT id FROM departments WHERE code = 'SERVICE' OR name = 'Service' LIMIT 1), (SELECT id FROM roles WHERE name = 'cashier' LIMIT 1), 'Bar & Restaurant POS Cashier'),
+              ('Bar & Restaurant Waiter', 'POS_BAR_REST_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE' OR name = 'Service' LIMIT 1), (SELECT id FROM roles WHERE name = 'waiter' LIMIT 1), 'Bar & Restaurant Waiter/Waitress')
+            ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, department_id = EXCLUDED.department_id, default_role_id = EXCLUDED.default_role_id;
+            UPDATE positions SET title = 'Receptionist' WHERE LOWER(title) LIKE '%receptionist%cashier%' OR code = 'POS_RECEPTIONIST';
+          END IF;
+
           -- Ensure essential columns exist in employees
           IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'employees') THEN
             ALTER TABLE employees ADD COLUMN IF NOT EXISTS department_id INTEGER;

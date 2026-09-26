@@ -1093,6 +1093,7 @@ WHERE code IN ('SERVICE', 'BAR', 'FRONTDESK')
 INSERT INTO outlets (name, code, type, department_id) VALUES
     ('Front Desk Reception', 'RECEPTION', 'frontdesk', (SELECT id FROM departments WHERE code = 'FRONTDESK')),
     ('Cafe', 'CAFE', 'pos', (SELECT id FROM departments WHERE code = 'SERVICE')),
+    ('Bar & Restaurant', 'BAR_RESTAURANT', 'pos', (SELECT id FROM departments WHERE code = 'SERVICE')),
     ('Main Bar', 'BAR', 'bar', (SELECT id FROM departments WHERE code = 'BAR')),
     ('Main Restaurant', 'RESTAURANT', 'pos', (SELECT id FROM departments WHERE code = 'SERVICE')),
     ('Cafe Kitchen', 'CAFE_KITCHEN', 'kitchen', (SELECT id FROM departments WHERE code = 'KITCHEN')),
@@ -1127,6 +1128,9 @@ INSERT INTO positions (title, code, department_id, default_role_id, description)
     ('Bartender', 'POS_BARTENDER', (SELECT id FROM departments WHERE code = 'BAR'), (SELECT id FROM roles WHERE name = 'bartender'), 'Bar & Beverage Server'),
     ('Restaurant Waiter', 'POS_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'waiter'), 'Dining Floor Waiter'),
     ('Receptionist', 'POS_RECEPTIONIST', (SELECT id FROM departments WHERE code = 'FRONTDESK'), (SELECT id FROM roles WHERE name = 'receptionist'), 'Front Desk Receptionist'),
+    ('Cafe Cashier', 'POS_CAFE_CASHIER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'cashier'), 'Cafe POS Cashier'),
+    ('Bar & Restaurant Cashier', 'POS_BAR_REST_CASHIER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'cashier'), 'Bar & Restaurant POS Cashier'),
+    ('Bar & Restaurant Waiter', 'POS_BAR_REST_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'waiter'), 'Bar & Restaurant Waiter/Waitress'),
     ('POS Cashier', 'POS_CASHIER', (SELECT id FROM departments WHERE code = 'FIN'), (SELECT id FROM roles WHERE name = 'cashier'), 'Cashier')
 ON CONFLICT (code) DO NOTHING;
 
