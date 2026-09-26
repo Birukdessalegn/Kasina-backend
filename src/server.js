@@ -36,3 +36,20 @@ const startServer = async () => {
 };
 
 startServer();
+
+// Automated Daily Check for Due Recurring Bills & Notifications
+try {
+  const recurringExpensesService = require("./modules/expenses/recurringExpenses.service");
+  // Run on startup after 10 seconds
+  setTimeout(() => {
+    recurringExpensesService.checkDueRecurringExpensesAndNotify().catch((e) => console.error("Initial recurring bills check failed:", e.message));
+  }, 10000);
+
+  // Run every 6 hours
+  setInterval(() => {
+    recurringExpensesService.checkDueRecurringExpensesAndNotify().catch((e) => console.error("Periodic recurring bills check failed:", e.message));
+  }, 6 * 60 * 60 * 1000);
+  console.log("✓ Recurring bills automated notification scheduler started");
+} catch (schedErr) {
+  console.warn("Could not initialize recurring bills scheduler:", schedErr.message);
+}

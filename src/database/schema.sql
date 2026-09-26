@@ -964,6 +964,26 @@ CREATE TABLE IF NOT EXISTS expense_categories (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+
+CREATE TABLE IF NOT EXISTS recurring_expenses (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    category_id INTEGER REFERENCES expense_categories(id),
+    amount NUMERIC(12,2) NOT NULL,
+    frequency VARCHAR(50) DEFAULT 'monthly',
+    due_day INTEGER NOT NULL DEFAULT 1,
+    payment_method VARCHAR(50) DEFAULT 'bank_transfer',
+    notify_before_days INTEGER DEFAULT 3,
+    last_notified_date DATE,
+    status VARCHAR(20) DEFAULT 'active',
+    notes TEXT,
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_recurring_expenses_status ON recurring_expenses(status);
+CREATE INDEX IF NOT EXISTS idx_recurring_expenses_due_day ON recurring_expenses(due_day);
+
 CREATE TABLE IF NOT EXISTS expenses (
     id SERIAL PRIMARY KEY,
     expense_number VARCHAR(50) UNIQUE,

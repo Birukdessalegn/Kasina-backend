@@ -99,6 +99,25 @@ const initializeDatabase = async () => {
             ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;
           END IF;
 
+          
+          -- Ensure recurring_expenses table exists
+          CREATE TABLE IF NOT EXISTS recurring_expenses (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            category_id INTEGER REFERENCES expense_categories(id),
+            amount NUMERIC(12,2) NOT NULL,
+            frequency VARCHAR(50) DEFAULT 'monthly',
+            due_day INTEGER NOT NULL DEFAULT 1,
+            payment_method VARCHAR(50) DEFAULT 'bank_transfer',
+            notify_before_days INTEGER DEFAULT 3,
+            last_notified_date DATE,
+            status VARCHAR(20) DEFAULT 'active',
+            notes TEXT,
+            created_by UUID REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
           -- Ensure essential columns exist in room_reservations
           IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'room_reservations') THEN
             ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_url TEXT;
