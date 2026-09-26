@@ -1126,7 +1126,7 @@ INSERT INTO positions (title, code, department_id, default_role_id, description)
     ('Line Chef', 'POS_CHEF', (SELECT id FROM departments WHERE code = 'KITCHEN'), (SELECT id FROM roles WHERE name = 'chef'), 'Restaurant Cook'),
     ('Bartender', 'POS_BARTENDER', (SELECT id FROM departments WHERE code = 'BAR'), (SELECT id FROM roles WHERE name = 'bartender'), 'Bar & Beverage Server'),
     ('Restaurant Waiter', 'POS_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'waiter'), 'Dining Floor Waiter'),
-    ('Receptionist / Cashier', 'POS_RECEPTIONIST', (SELECT id FROM departments WHERE code = 'FRONTDESK'), (SELECT id FROM roles WHERE name = 'receptionist'), 'Front Desk Receptionist'),
+    ('Receptionist', 'POS_RECEPTIONIST', (SELECT id FROM departments WHERE code = 'FRONTDESK'), (SELECT id FROM roles WHERE name = 'receptionist'), 'Front Desk Receptionist'),
     ('POS Cashier', 'POS_CASHIER', (SELECT id FROM departments WHERE code = 'FIN'), (SELECT id FROM roles WHERE name = 'cashier'), 'Cashier')
 ON CONFLICT (code) DO NOTHING;
 
