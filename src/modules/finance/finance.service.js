@@ -11,6 +11,12 @@ const getCashierShifts = async () => {
       cs.cashier_id,
       COALESCE(cs.cashier_name, e.first_name || ' ' || e.last_name, u.username) AS cashier_name,
       cs.terminal_id,
+      cs.outlet_id,
+      o.name AS outlet_name,
+      o.code AS outlet_code,
+      p.title AS position_title,
+      p.code AS position_code,
+      TRIM(CONCAT(sup.first_name, ' ', sup.last_name)) AS supervisor_name,
       cs.start_time,
       cs.end_time,
       cs.opening_cash,
@@ -36,6 +42,9 @@ const getCashierShifts = async () => {
     FROM cashier_shifts cs
     LEFT JOIN users u ON cs.cashier_id = u.id
     LEFT JOIN employees e ON e.user_id = u.id
+    LEFT JOIN outlets o ON COALESCE(cs.outlet_id, e.outlet_id) = o.id
+    LEFT JOIN positions p ON e.position_id = p.id
+    LEFT JOIN employees sup ON e.reports_to_employee_id = sup.id
     LEFT JOIN users vu ON cs.verified_by = vu.id
     LEFT JOIN employees ve ON ve.user_id = vu.id
     ORDER BY cs.start_time DESC
@@ -71,6 +80,12 @@ const getCashierShiftById = async (id) => {
       cs.cashier_id,
       COALESCE(cs.cashier_name, e.first_name || ' ' || e.last_name, u.username) AS cashier_name,
       cs.terminal_id,
+      cs.outlet_id,
+      o.name AS outlet_name,
+      o.code AS outlet_code,
+      p.title AS position_title,
+      p.code AS position_code,
+      TRIM(CONCAT(sup.first_name, ' ', sup.last_name)) AS supervisor_name,
       cs.start_time,
       cs.end_time,
       cs.opening_cash,

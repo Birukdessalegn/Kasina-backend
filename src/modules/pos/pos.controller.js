@@ -8,8 +8,33 @@ const vipCustomersService = require("../customers/vip_customers.service");
 
 const getOrders = async (req, res) => {
   try {
-    const outletId = req.query.outlet_id || req.query.outletId || (req.user && req.user.outlet_id);
-    const orders = await posService.getAllOrders({ outletId });
+    const userRole = String(req.user?.role || "").toLowerCase().trim();
+    const outletCode = String(req.user?.outlet_code || "").toUpperCase().trim();
+    const userOutletId = req.user?.outlet_id;
+
+    const unrestricted = [
+      "admin",
+      "hotel_manager",
+      "accountant_manager",
+      "cooperative_manager",
+      "fnb_manager",
+      "manager"
+    ];
+    const isUnrestricted = unrestricted.includes(userRole);
+
+    let effectiveOutletId = req.query.outlet_id || req.query.outletId;
+
+    if (!isUnrestricted) {
+      if (userRole === "cafe_supervisor" || outletCode === "CAFE") {
+        effectiveOutletId = userOutletId || 2;
+      } else if (userRole === "bar_restaurant_supervisor" || outletCode === "BAR_RESTAURANT") {
+        effectiveOutletId = userOutletId || 4;
+      } else if (userOutletId) {
+        effectiveOutletId = userOutletId;
+      }
+    }
+
+    const orders = await posService.getAllOrders({ outletId: effectiveOutletId });
 
     res.json({
       success: true,
