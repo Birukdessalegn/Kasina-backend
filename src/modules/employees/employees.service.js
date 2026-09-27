@@ -232,7 +232,7 @@ const createEmployee = async (employee) => {
       `
       SELECT id
       FROM users
-      WHERE username = $1
+      WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))
       `,
       [username]
     );
@@ -785,8 +785,16 @@ const updateEmployee = async (id, employee) => {
 
     // Update username if provided
     if (username && String(username).trim()) {
+      const cleanUsername = String(username).trim();
+      const existingUser = await pool.query(
+        `SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1)) AND id != $2`,
+        [cleanUsername, updatedEmployee.user_id]
+      );
+      if (existingUser.rows.length > 0) {
+        throw new Error("Username already exists");
+      }
       userUpdates.push(`username = $${pIdx++}`);
-      userParams.push(String(username).trim());
+      userParams.push(cleanUsername);
     }
 
     // Update password (hashed) if a new password was entered (stored in password_hash)
