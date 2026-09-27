@@ -78,6 +78,16 @@ const initializeDatabase = async () => {
               ('Bar & Restaurant Waiter', 'POS_BAR_REST_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE' OR name = 'Service' LIMIT 1), (SELECT id FROM roles WHERE name = 'waiter' LIMIT 1), 'Bar & Restaurant Waiter/Waitress')
             ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, department_id = EXCLUDED.department_id, default_role_id = EXCLUDED.default_role_id;
             UPDATE positions SET title = 'Receptionist' WHERE LOWER(title) LIKE '%receptionist%cashier%' OR code = 'POS_RECEPTIONIST';
+            
+            -- Ensure Janitor role and position exist
+            INSERT INTO roles (name, description)
+            VALUES ('janitor', 'Hotel Janitor, Room Cleaner & Facilities Attendant')
+            ON CONFLICT (name) DO NOTHING;
+
+            INSERT INTO positions (title, code, department_id, default_role_id, description)
+            VALUES 
+              ('Janitor', 'POS_JANITOR', (SELECT id FROM departments WHERE code = 'HOUSEKEEPING' OR name = 'Housekeeping' LIMIT 1), (SELECT id FROM roles WHERE name = 'janitor' LIMIT 1), 'Hotel Janitor and Room Cleaner')
+            ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, department_id = EXCLUDED.department_id, default_role_id = EXCLUDED.default_role_id;
           END IF;
 
           -- Ensure essential columns exist in employees
