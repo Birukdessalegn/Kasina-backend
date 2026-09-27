@@ -287,9 +287,28 @@ const startShift = async (cashierId, shiftData = {}) => {
 // CLOSE SHIFT
 // ============================================================
 const closeShift = async (cashierId, closingData = {}) => {
-  const { actual_cash, actualCash, closing_notes, closingNotes, cashier_notes, cashierNotes } = closingData;
-  const countedCash = parseFloat(actual_cash !== undefined ? actual_cash : actualCash);
-  const notes = closing_notes || closingNotes || cashier_notes || cashierNotes || null;
+  const {
+    actual_cash,
+    actualCash,
+    actual_cash_counted,
+    actualCashCounted,
+    closing_notes,
+    closingNotes,
+    cashier_notes,
+    cashierNotes,
+    notes: genericNotes,
+  } = closingData;
+
+  const rawCash = actual_cash !== undefined
+    ? actual_cash
+    : (actualCash !== undefined
+        ? actualCash
+        : (actual_cash_counted !== undefined
+            ? actual_cash_counted
+            : actualCashCounted));
+
+  const countedCash = parseFloat(rawCash);
+  const notes = closing_notes || closingNotes || cashier_notes || cashierNotes || genericNotes || null;
 
   if (isNaN(countedCash)) {
     throw new Error("Actual counted cash (actual_cash) is required to close a shift.");
