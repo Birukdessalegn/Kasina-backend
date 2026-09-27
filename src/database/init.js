@@ -59,6 +59,7 @@ const initializeDatabase = async () => {
             ALTER TABLE positions ADD COLUMN IF NOT EXISTS default_role_id INTEGER;
             ALTER TABLE positions ADD COLUMN IF NOT EXISTS description TEXT;
             UPDATE positions SET title = 'Receptionist' WHERE LOWER(title) LIKE '%receptionist%cashier%' OR code = 'POS_RECEPTIONIST';
+            UPDATE positions SET title = 'Restaurant Chef' WHERE LOWER(title) = 'line chef' OR code = 'POS_CHEF';
           END IF;
 
           -- Ensure Bar & Restaurant outlet exists

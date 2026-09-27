@@ -1144,7 +1144,7 @@ INSERT INTO positions (title, code, department_id, default_role_id, description)
     ('Cafe Chef', 'POS_CAFE_CHEF', (SELECT id FROM departments WHERE code = 'KITCHEN'), (SELECT id FROM roles WHERE name = 'cafe_chef'), 'Cafe Culinary Chef'),
     ('Barista', 'POS_BARISTA', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'barista'), 'Cafe Barista'),
     ('Cafe Waiter', 'POS_CAFE_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'cafe_waiter'), 'Cafe Waiter/Waitress'),
-    ('Line Chef', 'POS_CHEF', (SELECT id FROM departments WHERE code = 'KITCHEN'), (SELECT id FROM roles WHERE name = 'chef'), 'Restaurant Cook'),
+    ('Restaurant Chef', 'POS_CHEF', (SELECT id FROM departments WHERE code = 'KITCHEN'), (SELECT id FROM roles WHERE name = 'chef'), 'Restaurant Cook'),
     ('Bartender', 'POS_BARTENDER', (SELECT id FROM departments WHERE code = 'BAR'), (SELECT id FROM roles WHERE name = 'bartender'), 'Bar & Beverage Server'),
     ('Restaurant Waiter', 'POS_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'waiter'), 'Dining Floor Waiter'),
     ('Receptionist', 'POS_RECEPTIONIST', (SELECT id FROM departments WHERE code = 'FRONTDESK'), (SELECT id FROM roles WHERE name = 'receptionist'), 'Front Desk Receptionist'),
