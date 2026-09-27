@@ -65,7 +65,7 @@ const loginUser = async (username, password) => {
          END ASC
        LIMIT 1
      ) e ON true
-     WHERE LOWER(TRIM(u.username)) = LOWER(TRIM($1))`,
+     WHERE u.username = TRIM($1)`,
     [username]
   );
 
