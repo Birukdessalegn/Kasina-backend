@@ -79,14 +79,17 @@ const initializeDatabase = async () => {
             ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, department_id = EXCLUDED.department_id, default_role_id = EXCLUDED.default_role_id;
             UPDATE positions SET title = 'Receptionist' WHERE LOWER(title) LIKE '%receptionist%cashier%' OR code = 'POS_RECEPTIONIST';
             
-            -- Ensure Janitor role and position exist
+            -- Ensure Janitor and Security Guard roles and positions exist
             INSERT INTO roles (name, description)
-            VALUES ('janitor', 'Hotel Janitor, Room Cleaner & Facilities Attendant')
+            VALUES 
+              ('janitor', 'Hotel Janitor, Room Cleaner & Facilities Attendant'),
+              ('security_guard', 'Hotel Security Guard & Premises Safety Officer')
             ON CONFLICT (name) DO NOTHING;
 
             INSERT INTO positions (title, code, department_id, default_role_id, description)
             VALUES 
-              ('Janitor', 'POS_JANITOR', (SELECT id FROM departments WHERE code = 'HOUSEKEEPING' OR name = 'Housekeeping' LIMIT 1), (SELECT id FROM roles WHERE name = 'janitor' LIMIT 1), 'Hotel Janitor and Room Cleaner')
+              ('Janitor', 'POS_JANITOR', (SELECT id FROM departments WHERE code = 'HOUSEKEEPING' OR name = 'Housekeeping' LIMIT 1), (SELECT id FROM roles WHERE name = 'janitor' LIMIT 1), 'Hotel Janitor and Room Cleaner'),
+              ('Security Guard', 'POS_SECURITY', (SELECT id FROM departments WHERE code = 'ADMIN' OR name = 'Administration' LIMIT 1), (SELECT id FROM roles WHERE name = 'security_guard' LIMIT 1), 'Hotel Security Guard and Premises Watchman')
             ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, department_id = EXCLUDED.department_id, default_role_id = EXCLUDED.default_role_id;
           END IF;
 

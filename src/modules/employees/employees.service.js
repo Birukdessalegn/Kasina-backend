@@ -163,15 +163,14 @@ const createEmployee = async (employee) => {
     const rawReportsTo = employee.reportsToEmployeeId || employee.reports_to_employee_id || employee.reportsTo;
 
     // -----------------------------------------------------
-    // VALIDATE LOGIN INFORMATION
+    // VALIDATE LOGIN INFORMATION (Optional for non-login staff)
     // -----------------------------------------------------
 
-    if (!username) {
-      throw new Error("Username is required");
-    }
+    const cleanUsername = username ? String(username).trim() : "";
+    const hasLogin = Boolean(cleanUsername);
 
-    if (!password) {
-      throw new Error("Password is required");
+    if (hasLogin && !password) {
+      throw new Error("Password is required when providing a username");
     }
 
     if (!rawRole) {
@@ -225,20 +224,22 @@ const createEmployee = async (employee) => {
 
 
     // -----------------------------------------------------
-    // CHECK USERNAME
+    // CHECK USERNAME (if login requested)
     // -----------------------------------------------------
 
-    const existingUsername = await client.query(
-      `
-      SELECT id
-      FROM users
-      WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))
-      `,
-      [username]
-    );
+    if (hasLogin) {
+      const existingUsername = await client.query(
+        `
+        SELECT id
+        FROM users
+        WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))
+        `,
+        [cleanUsername]
+      );
 
-    if (existingUsername.rows.length > 0) {
-      throw new Error("Username already exists");
+      if (existingUsername.rows.length > 0) {
+        throw new Error("Username already exists");
+      }
     }
 
 
@@ -375,13 +376,6 @@ const createEmployee = async (employee) => {
 
 
     // -----------------------------------------------------
-    // HASH PASSWORD
-    // -----------------------------------------------------
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-
-    // -----------------------------------------------------
     // RESOLVE POSITION, OUTLET & REPORTS_TO
     // -----------------------------------------------------
 
@@ -429,41 +423,49 @@ const createEmployee = async (employee) => {
     }
 
     // -----------------------------------------------------
-    // CREATE USER ACCOUNT
+    // CREATE USER ACCOUNT (Only if login credentials provided)
     // -----------------------------------------------------
 
-    const userResult = await client.query(
-      `
-      INSERT INTO users (
-        username,
-        email,
-        password_hash,
-        role_id,
-        outlet_id,
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6)
+    let user = null;
+    let userId = null;
 
-      RETURNING
-        id,
-        username,
-        email,
-        role_id,
-        outlet_id,
-        status,
-        created_at
-      `,
-      [
-        username,
-        email || null,
-        passwordHash,
-        actualRoleId,
-        actualOutletId,
-        "active",
-      ]
-    );
+    if (hasLogin) {
+      const passwordHash = await bcrypt.hash(password, 10);
 
-    const user = userResult.rows[0];
+      const userResult = await client.query(
+        `
+        INSERT INTO users (
+          username,
+          email,
+          password_hash,
+          role_id,
+          outlet_id,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+
+        RETURNING
+          id,
+          username,
+          email,
+          role_id,
+          outlet_id,
+          status,
+          created_at
+        `,
+        [
+          cleanUsername,
+          email || null,
+          passwordHash,
+          actualRoleId,
+          actualOutletId,
+          "active",
+        ]
+      );
+
+      user = userResult.rows[0];
+      userId = user.id;
+    }
 
 
     // -----------------------------------------------------
@@ -522,7 +524,7 @@ const createEmployee = async (employee) => {
         actualOutletId,
         actualPositionId,
         actualReportsToId,
-        user.id,
+        userId,
         hireDate || null,
         salary || 0,
         "active",
@@ -572,14 +574,16 @@ const createEmployee = async (employee) => {
     // Return both
     return {
       employee: fullEmployee,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        roleId: user.role_id,
-        role: fullEmployee.role || "cashier",
-        status: user.status,
-      },
+      user: user
+        ? {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            roleId: user.role_id,
+            role: fullEmployee.role || "cashier",
+            status: user.status,
+          }
+        : null,
     };
 
   } catch (error) {

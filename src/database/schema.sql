@@ -1065,6 +1065,7 @@ INSERT INTO roles (name, description) VALUES
     ('receptionist', 'Front Desk and Guest Check-In Agent'),
     ('cashier', 'POS Point of Sale Cashier'),
     ('janitor', 'Hotel Janitor, Room Cleaner & Facilities Attendant'),
+    ('security_guard', 'Hotel Security Guard & Premises Safety Officer'),
     ('fb_controller', 'Legacy Food & Beverage Controller'),
     ('finance', 'Legacy Finance Officer'),
     ('manager', 'Legacy General Manager')
@@ -1153,7 +1154,8 @@ INSERT INTO positions (title, code, department_id, default_role_id, description)
     ('Bar & Restaurant Cashier', 'POS_BAR_REST_CASHIER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'cashier'), 'Bar & Restaurant POS Cashier'),
     ('Bar & Restaurant Waiter', 'POS_BAR_REST_WAITER', (SELECT id FROM departments WHERE code = 'SERVICE'), (SELECT id FROM roles WHERE name = 'waiter'), 'Bar & Restaurant Waiter/Waitress'),
     ('POS Cashier', 'POS_CASHIER', (SELECT id FROM departments WHERE code = 'FIN'), (SELECT id FROM roles WHERE name = 'cashier'), 'Cashier'),
-    ('Janitor', 'POS_JANITOR', (SELECT id FROM departments WHERE code = 'HOUSEKEEPING'), (SELECT id FROM roles WHERE name = 'janitor'), 'Hotel Janitor and Room Cleaner')
+    ('Janitor', 'POS_JANITOR', (SELECT id FROM departments WHERE code = 'HOUSEKEEPING'), (SELECT id FROM roles WHERE name = 'janitor'), 'Hotel Janitor and Room Cleaner'),
+    ('Security Guard', 'POS_SECURITY', (SELECT id FROM departments WHERE code = 'ADMIN'), (SELECT id FROM roles WHERE name = 'security_guard'), 'Hotel Security Guard and Premises Watchman')
 ON CONFLICT (code) DO NOTHING;
 
 
