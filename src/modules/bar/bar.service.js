@@ -48,6 +48,8 @@ const getAllBarOrders = async () => {
               'product_id', oi.product_id,
               'product_name', p.name,
               'name', p.name,
+              'category_name', pc.name,
+              'category_type', pc.type,
               'unit_price', oi.unit_price,
               'notes', oi.notes
             )
@@ -55,6 +57,7 @@ const getAllBarOrders = async () => {
           FROM bar_order_items boi
           JOIN order_items oi ON boi.order_item_id = oi.id
           JOIN products p ON oi.product_id = p.id
+          LEFT JOIN product_categories pc ON p.category_id = pc.id
           WHERE boi.bar_order_id = bo.id
         ),
         '[]'::json
@@ -168,7 +171,9 @@ const getBarOrderById = async (id) => {
       oi.notes,
 
       p.name AS product_name,
-      p.unit
+      p.unit,
+      pc.name AS category_name,
+      pc.type AS category_type
 
     FROM bar_order_items boi
 
@@ -177,6 +182,9 @@ const getBarOrderById = async (id) => {
 
     JOIN products p
       ON oi.product_id = p.id
+
+    LEFT JOIN product_categories pc
+      ON p.category_id = pc.id
 
     WHERE boi.bar_order_id = $1
 
