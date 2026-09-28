@@ -291,8 +291,9 @@ const requestTransfer = async ({
   notes,
   userId,
 }) => {
-  if (!toLocation || !["bar", "kitchen"].includes(toLocation.toLowerCase())) {
-    throw new Error("Invalid department requesting stock. Must be 'bar' or 'kitchen'.");
+  const validDepartments = ["bar", "kitchen", "cafe", "barista", "restaurant", "housekeeping"];
+  if (!toLocation || !validDepartments.includes(toLocation.toLowerCase())) {
+    throw new Error(`Invalid department requesting stock. Must be one of: ${validDepartments.join(", ")}`);
   }
 
   if (!items || !Array.isArray(items) || items.length === 0) {

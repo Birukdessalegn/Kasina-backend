@@ -54,10 +54,11 @@ const requestTransfer = async (req, res) => {
     const { toLocation, items, notes } = req.body;
     const userId = req.user?.id || null;
 
-    if (!toLocation) {
+    const validDepartments = ["bar", "kitchen", "cafe", "barista", "restaurant", "housekeeping"];
+    if (!toLocation || !validDepartments.includes(toLocation.toLowerCase())) {
       return res.status(400).json({
         success: false,
-        message: "Department ('bar' or 'kitchen') is required.",
+        message: `Department must be one of: ${validDepartments.join(", ")}`,
       });
     }
 
