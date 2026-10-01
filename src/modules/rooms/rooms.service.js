@@ -31,6 +31,8 @@ const getAllRooms = async ({ status, floor, typeId } = {}) => {
       res.check_in_date,
       res.check_out_date,
       res.actual_check_in_at,
+      res.rate_per_night,
+      res.total_nights,
       res.total_amount,
       res.paid_amount,
       res.payment_status,
