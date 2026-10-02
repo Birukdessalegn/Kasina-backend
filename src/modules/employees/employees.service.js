@@ -829,6 +829,48 @@ const updateEmployee = async (id, employee) => {
     }
   }
 
+  // 4b. Create brand new login account if employee currently has NO user_id but username & password are provided
+  if (updatedEmployee && !updatedEmployee.user_id && username && String(username).trim() && password && String(password).trim()) {
+    const cleanUsername = String(username).trim();
+    const existingUser = await pool.query(
+      `SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))`,
+      [cleanUsername]
+    );
+    if (existingUser.rows.length > 0) {
+      throw new Error("Username already exists");
+    }
+
+    const hashedPassword = await bcrypt.hash(String(password).trim(), 10);
+    const newUserResult = await pool.query(
+      `
+      INSERT INTO users (
+        username,
+        email,
+        password_hash,
+        role_id,
+        outlet_id,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, 'active')
+      RETURNING id
+      `,
+      [
+        cleanUsername,
+        email && String(email).trim() ? String(email).trim() : null,
+        hashedPassword,
+        actualRoleId || updatedEmployee.role_id,
+        actualOutletId || updatedEmployee.outlet_id,
+      ]
+    );
+
+    const newUserId = newUserResult.rows[0].id;
+    await pool.query(
+      `UPDATE employees SET user_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [newUserId, id]
+    );
+    updatedEmployee.user_id = newUserId;
+  }
+
   // 5. Fetch and return full updated employee record with role & user info
   const fullEmpRes = await pool.query(
     `
