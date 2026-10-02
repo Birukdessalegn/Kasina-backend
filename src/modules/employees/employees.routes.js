@@ -17,11 +17,12 @@ router.get("/departments", employeesController.getDepartments);
 router.get("/", employeesController.getEmployees);
 router.get("/:id", employeesController.getEmployee);
 
-// Only Admin, HR or Hotel Manager can create, edit, delete, or manage accounts
-router.post("/", authorize("admin", "hr", "hotel_manager"), employeesController.createEmployee);
-router.put("/:id", authorize("admin", "hr", "hotel_manager"), employeesController.updateEmployee);
-router.delete("/:id", authorize("admin", "hr", "hotel_manager"), employeesController.deleteEmployee);
-router.put("/:id/activate", authorize("admin", "hr", "hotel_manager"), employeesController.activateEmployee);
-router.delete("/:id/login-account", authorize("admin", "hr", "hotel_manager"), employeesController.deleteEmployeeAccount);
+// Admin, HR, Hotel Manager, General Manager, or Cooperative Manager can manage employees
+const allowedManagers = ["admin", "hr", "hr_manager", "hotel_manager", "manager", "cooperative_manager"];
+router.post("/", authorize(...allowedManagers), employeesController.createEmployee);
+router.put("/:id", authorize(...allowedManagers), employeesController.updateEmployee);
+router.delete("/:id", authorize(...allowedManagers), employeesController.deleteEmployee);
+router.put("/:id/activate", authorize(...allowedManagers), employeesController.activateEmployee);
+router.delete("/:id/login-account", authorize(...allowedManagers), employeesController.deleteEmployeeAccount);
 
 module.exports = router;
