@@ -48,12 +48,33 @@ const getHousekeepingDashboard = async () => {
   // 3. Linen Inventory
   const { rows: linens } = await pool.query(`SELECT * FROM linen_inventory ORDER BY id ASC`);
 
-  // 4. Housekeeping Cleaners list for assignment dropdown
+  // 4. Housekeeping Cleaners list for assignment dropdown (only housekeeping / cleaner staff)
   const { rows: cleaners } = await pool.query(`
-    SELECT e.id, e.employee_code, e.first_name, e.last_name, p.title AS position_title
+    SELECT 
+      e.id, 
+      e.employee_code, 
+      e.first_name, 
+      e.last_name, 
+      COALESCE(p.title, r.name, 'Cleaner') AS position_title
     FROM employees e
     LEFT JOIN positions p ON e.position_id = p.id
+    LEFT JOIN departments d ON e.department_id = d.id
+    LEFT JOIN roles r ON e.role_id = r.id
     WHERE e.status = 'active'
+      AND (
+        LOWER(d.code) = 'housekeeping'
+        OR LOWER(d.name) LIKE '%housekeep%'
+        OR LOWER(d.name) LIKE '%clean%'
+        OR LOWER(p.code) LIKE '%clean%'
+        OR LOWER(p.code) LIKE '%housekeep%'
+        OR LOWER(p.code) LIKE '%janitor%'
+        OR LOWER(p.title) LIKE '%clean%'
+        OR LOWER(p.title) LIKE '%housekeep%'
+        OR LOWER(p.title) LIKE '%janitor%'
+        OR LOWER(r.name) LIKE '%clean%'
+        OR LOWER(r.name) LIKE '%housekeep%'
+        OR LOWER(r.name) LIKE '%janitor%'
+      )
     ORDER BY e.first_name ASC
   `);
 
