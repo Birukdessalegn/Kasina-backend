@@ -362,6 +362,17 @@ CREATE TABLE IF NOT EXISTS products (
     serving_size VARCHAR(50) DEFAULT 'unit',
     shots_capacity INTEGER DEFAULT 0,
     is_shot_item BOOLEAN DEFAULT FALSE,
+    low_stock_threshold NUMERIC(12,2) DEFAULT 5,
+    out_of_stock_threshold NUMERIC(12,2) DEFAULT 0,
+    double_shot_price NUMERIC(12,2) DEFAULT NULL,
+    half_bottle_price NUMERIC(12,2) DEFAULT NULL,
+    bottle_price NUMERIC(12,2) DEFAULT NULL,
+    allow_single_shot BOOLEAN DEFAULT TRUE,
+    allow_double_shot BOOLEAN DEFAULT TRUE,
+    allow_half_bottle BOOLEAN DEFAULT TRUE,
+    allow_full_bottle BOOLEAN DEFAULT TRUE,
+    applicable_for VARCHAR(50) DEFAULT 'both',
+    tags VARCHAR(255) DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -465,6 +476,8 @@ CREATE TABLE IF NOT EXISTS stock_transfers (
     approved_by UUID REFERENCES users(id),
     approved_at TIMESTAMP,
     rejection_reason TEXT,
+    received_at TIMESTAMP,
+    receiving_notes TEXT,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1257,3 +1270,51 @@ ON CONFLICT (item_name) DO NOTHING;
 -- ============================================================
 
 SELECT 'Kasina Hotel consolidated master database schema initialized successfully!' AS message;
+
+-- ============================================================
+-- PAYMENT ACCOUNTS (Multi-Channel Cash / Bank / Digital)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS payment_accounts (
+    id SERIAL PRIMARY KEY,
+    account_name VARCHAR(100) NOT NULL,
+    account_type VARCHAR(50) NOT NULL, -- 'bank', 'telebirr', 'cbe_birr', 'cash', 'other'
+    bank_name VARCHAR(100),
+    account_number VARCHAR(100),
+    account_holder VARCHAR(150),
+    current_balance NUMERIC(14,2) DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_accounts_active ON payment_accounts(is_active);
+
+-- ============================================================
+-- STOCK SHORTAGE REQUESTS & AUDIT LOGS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS stock_shortage_requests (
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    department VARCHAR(50) NOT NULL, -- 'kitchen', 'bar', 'fruit'
+    expected_quantity NUMERIC(12,3) NOT NULL,
+    physical_count NUMERIC(12,3) NOT NULL,
+    shortage_quantity NUMERIC(12,3) NOT NULL,
+    unit_cost NUMERIC(12,2) DEFAULT 0.00,
+    total_loss_value NUMERIC(12,2) DEFAULT 0.00,
+    reason VARCHAR(100) NOT NULL, -- 'breakage_spillage', 'unaccounted_missing', 'kitchen_waste', 'expired', 'other'
+    notes TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending_approval', -- 'pending_approval', 'approved', 'rejected'
+    requested_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    requester_name VARCHAR(150),
+    reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    reviewer_name VARCHAR(150),
+    review_notes TEXT,
+    reviewed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_shortage_status ON stock_shortage_requests(status);
+CREATE INDEX IF NOT EXISTS idx_shortage_dept ON stock_shortage_requests(department);
