@@ -747,6 +747,8 @@ CREATE TABLE IF NOT EXISTS room_payments (
     transaction_reference VARCHAR(100),
     notes TEXT,
     received_by UUID REFERENCES users(id),
+    receipt_image TEXT,
+    image_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

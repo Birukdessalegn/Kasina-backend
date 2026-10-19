@@ -151,6 +151,8 @@ const initializeDatabase = async () => {
           IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'room_reservations') THEN
             ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_url TEXT;
             ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS id_image_back_url TEXT;
+   ALTER TABLE room_payments ADD COLUMN IF NOT EXISTS receipt_image TEXT;
+   ALTER TABLE room_payments ADD COLUMN IF NOT EXISTS image_url TEXT;
           END IF;
         END $$;
       `);

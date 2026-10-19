@@ -348,15 +348,17 @@ const createReservation = async (data, userId) => {
     if (paidAmount > 0) {
       await client.query(
         `INSERT INTO room_payments (
-          reservation_id, amount, payment_method, payment_type, transaction_reference, received_by
-        ) VALUES ($1, $2, $3, $4, $5, $6)`,
+          reservation_id, amount, payment_method, payment_type, transaction_reference, received_by, receipt_image, image_url
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           reservation.id,
           paidAmount,
           payment_method,
           is_walkin ? "payment" : "deposit",
           transaction_reference || null,
-          userId || null
+          userId || null,
+          receipt_image || image_url || null,
+          receipt_image || image_url || null
         ]
       );
     }
@@ -426,7 +428,7 @@ const checkInReservation = async (id, userId) => {
 /**
  * Add a payment to a reservation
  */
-const addPayment = async (id, { amount, payment_method, payment_type = "payment", transaction_reference, notes }, userId) => {
+const addPayment = async (id, { amount, payment_method, payment_type = "payment", transaction_reference, notes, receipt_image, image_url }, userId) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -444,8 +446,8 @@ const addPayment = async (id, { amount, payment_method, payment_type = "payment"
 
     await client.query(
       `INSERT INTO room_payments (
-        reservation_id, amount, payment_method, payment_type, transaction_reference, notes, received_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        reservation_id, amount, payment_method, payment_type, transaction_reference, notes, received_by, receipt_image, image_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         id,
         payAmount,
@@ -453,7 +455,9 @@ const addPayment = async (id, { amount, payment_method, payment_type = "payment"
         payment_type,
         transaction_reference || null,
         notes || null,
-        userId || null
+        userId || null,
+        receipt_image || image_url || null,
+        receipt_image || image_url || null
       ]
     );
 
@@ -503,9 +507,9 @@ const checkOutReservation = async (id, { payment_amount = 0, payment_method = "c
     if (finalPayment > 0) {
       await client.query(
         `INSERT INTO room_payments (
-          reservation_id, amount, payment_method, payment_type, notes, received_by
-        ) VALUES ($1, $2, $3, 'settlement', $4, $5)`,
-        [id, finalPayment, payment_method, notes || "Checkout settlement", userId || null]
+          reservation_id, amount, payment_method, payment_type, transaction_reference, notes, received_by, receipt_image, image_url
+        ) VALUES ($1, $2, $3, 'settlement', $4, $5, $6, $7, $8)`,
+        [id, finalPayment, payment_method, transaction_reference || null, notes || "Checkout settlement", userId || null, receipt_image || image_url || null, receipt_image || image_url || null]
       );
       currentPaid += finalPayment;
     }
