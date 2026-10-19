@@ -235,7 +235,146 @@ const updateLinen = async (id, { inUse, inLaundry, cleanAvailable }) => {
   return rows[0];
 };
 
+
+/**
+ * Get Housekeeping & Reception Cross-Check Report for a specific date
+ */
+const getHousekeepingReport = async (date) => {
+  const targetDate = date || new Date().toISOString().split("T")[0];
+
+  // 1. All rooms with current reception status + latest housekeeping task on targetDate
+  const roomsMatrixQuery = `
+    SELECT 
+      r.id AS room_id,
+      r.room_number,
+      r.floor,
+      r.status AS reception_status,
+      rt.name AS room_type_name,
+      rt.base_rate,
+      latest_task.id AS task_id,
+      latest_task.task_type,
+      latest_task.priority,
+      latest_task.status AS task_status,
+      latest_task.notes AS task_notes,
+      latest_task.completed_at,
+      latest_task.cleaner_id,
+      latest_task.cleaner_name,
+      latest_task.cleaner_position
+    FROM rooms r
+    LEFT JOIN room_types rt ON r.room_type_id = rt.id
+    LEFT JOIN LATERAL (
+      SELECT 
+        ht.id,
+        ht.task_type,
+        ht.priority,
+        ht.status,
+        ht.notes,
+        ht.completed_at,
+        e.id AS cleaner_id,
+        CONCAT(e.first_name, ' ', e.last_name) AS cleaner_name,
+        p.title AS cleaner_position
+      FROM housekeeping_tasks ht
+      LEFT JOIN employees e ON ht.assigned_employee_id = e.id
+      LEFT JOIN positions p ON e.position_id = p.id
+      WHERE ht.room_id = r.id
+        AND (
+          (DATE(ht.completed_at) = $1::date AND ht.status IN ('completed', 'inspected'))
+          OR (DATE(ht.created_at) = $1::date)
+        )
+      ORDER BY 
+        CASE WHEN ht.status IN ('completed', 'inspected') THEN 1 ELSE 2 END,
+        ht.completed_at DESC NULLS LAST, 
+        ht.created_at DESC
+      LIMIT 1
+    ) latest_task ON true
+    ORDER BY r.floor ASC, r.room_number ASC
+  `;
+
+  const { rows: roomMatrix } = await pool.query(roomsMatrixQuery, [targetDate]);
+
+  // 2. All cleaning tasks completed on this date
+  const completedTasksQuery = `
+    SELECT 
+      ht.id AS task_id,
+      ht.room_id,
+      r.room_number,
+      rt.name AS room_type_name,
+      r.floor,
+      r.status AS current_room_status,
+      ht.task_type,
+      ht.priority,
+      ht.status AS task_status,
+      ht.notes AS task_notes,
+      ht.checklist,
+      ht.created_at,
+      ht.completed_at,
+      e.id AS cleaner_id,
+      CONCAT(e.first_name, ' ', e.last_name) AS cleaner_name,
+      p.title AS cleaner_position
+    FROM housekeeping_tasks ht
+    JOIN rooms r ON ht.room_id = r.id
+    LEFT JOIN room_types rt ON r.room_type_id = rt.id
+    LEFT JOIN employees e ON ht.assigned_employee_id = e.id
+    LEFT JOIN positions p ON e.position_id = p.id
+    WHERE DATE(ht.completed_at) = $1::date 
+      AND ht.status IN ('completed', 'inspected')
+    ORDER BY ht.completed_at DESC
+  `;
+  const { rows: completedTasks } = await pool.query(completedTasksQuery, [targetDate]);
+
+  // 3. Cleaners productivity breakdown for the date
+  const cleanerStatsQuery = `
+    SELECT 
+      e.id AS cleaner_id,
+      CONCAT(e.first_name, ' ', e.last_name) AS cleaner_name,
+      p.title AS cleaner_position,
+      COUNT(ht.id) AS cleaned_count,
+      COUNT(DISTINCT ht.room_id) AS distinct_rooms_cleaned
+    FROM housekeeping_tasks ht
+    JOIN employees e ON ht.assigned_employee_id = e.id
+    LEFT JOIN positions p ON e.position_id = p.id
+    WHERE DATE(ht.completed_at) = $1::date
+      AND ht.status IN ('completed', 'inspected')
+    GROUP BY e.id, e.first_name, e.last_name, p.title
+    ORDER BY cleaned_count DESC
+  `;
+  const { rows: cleanerBreakdown } = await pool.query(cleanerStatsQuery, [targetDate]);
+
+  // 4. Room status overall counts (Reception perspective)
+  const roomStatsQuery = `
+    SELECT 
+      COUNT(*) AS total_rooms,
+      COUNT(*) FILTER (WHERE status = 'available') AS available_count,
+      COUNT(*) FILTER (WHERE status = 'occupied') AS occupied_count,
+      COUNT(*) FILTER (WHERE status = 'cleaning') AS cleaning_count,
+      COUNT(*) FILTER (WHERE status = 'maintenance') AS maintenance_count,
+      COUNT(*) FILTER (WHERE status = 'reserved') AS reserved_count
+    FROM rooms
+  `;
+  const { rows: [roomStats] } = await pool.query(roomStatsQuery);
+
+  const distinctRoomsCleaned = new Set(completedTasks.map(t => t.room_id)).size;
+
+  return {
+    date: targetDate,
+    stats: {
+      totalRooms: Number(roomStats?.total_rooms || 0),
+      cleanedOnDate: distinctRoomsCleaned,
+      totalCleanedTasks: completedTasks.length,
+      availableReady: Number(roomStats?.available_count || 0),
+      occupiedNow: Number(roomStats?.occupied_count || 0),
+      cleaningNow: Number(roomStats?.cleaning_count || 0),
+      maintenanceNow: Number(roomStats?.maintenance_count || 0),
+      reservedNow: Number(roomStats?.reserved_count || 0)
+    },
+    cleanerBreakdown,
+    completedTasks,
+    roomMatrix
+  };
+};
+
 module.exports = {
+  getHousekeepingReport,
   getHousekeepingDashboard,
   getTasks,
   createTask,

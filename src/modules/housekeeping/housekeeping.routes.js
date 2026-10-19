@@ -6,6 +6,7 @@ const authMiddleware = require("../../middleware/auth.middleware");
 router.use(authMiddleware);
 
 router.get("/dashboard", housekeepingController.getDashboard);
+router.get("/report", housekeepingController.getReport);
 router.get("/tasks", housekeepingController.getTasks);
 router.post("/tasks", housekeepingController.createTask);
 router.put("/tasks/:id/status", housekeepingController.updateTaskStatus);
