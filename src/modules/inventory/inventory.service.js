@@ -143,15 +143,24 @@ const updateInventory = async (productId, data) => {
     unit,
   } = data;
 
+  // 1. Upsert into main inventory
   const result = await pool.query(
     `
-    UPDATE inventory
-    SET
-      minimum_stock = COALESCE($1, minimum_stock),
-      maximum_stock = COALESCE($2, maximum_stock),
-      unit = COALESCE($3, unit),
+    INSERT INTO inventory (
+      product_id,
+      quantity,
+      minimum_stock,
+      maximum_stock,
+      unit,
+      updated_at
+    )
+    VALUES ($4, 0, COALESCE($1, 0), $2, $3, CURRENT_TIMESTAMP)
+    ON CONFLICT (product_id)
+    DO UPDATE SET
+      minimum_stock = COALESCE($1, inventory.minimum_stock),
+      maximum_stock = COALESCE($2, inventory.maximum_stock),
+      unit = COALESCE($3, inventory.unit),
       updated_at = CURRENT_TIMESTAMP
-    WHERE product_id = $4
     RETURNING *
     `,
     [
@@ -161,6 +170,14 @@ const updateInventory = async (productId, data) => {
       productId,
     ]
   );
+
+  // 2. Also keep products.low_stock_threshold in sync
+  if (minimumStock !== undefined && minimumStock !== null) {
+    await pool.query(
+      `UPDATE products SET low_stock_threshold = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [minimumStock, productId]
+    );
+  }
 
   return result.rows[0];
 };
