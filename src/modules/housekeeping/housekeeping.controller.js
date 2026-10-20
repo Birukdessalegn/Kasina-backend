@@ -69,8 +69,8 @@ const updateLinenStock = async (req, res) => {
 
 const getReport = async (req, res) => {
   try {
-    const { date } = req.query;
-    const report = await housekeepingService.getHousekeepingReport(date);
+    const { date, startDate, endDate } = req.query;
+    const report = await housekeepingService.getHousekeepingReport({ date, startDate, endDate });
     res.json({ success: true, data: report });
   } catch (error) {
     console.error("Get housekeeping report error:", error);

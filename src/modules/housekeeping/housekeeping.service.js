@@ -237,12 +237,39 @@ const updateLinen = async (id, { inUse, inLaundry, cleanAvailable }) => {
 
 
 /**
- * Get Housekeeping & Reception Cross-Check Report for a specific date
+ * Get Housekeeping & Reception Cross-Check Report with flexible date range & last cleaning history
  */
-const getHousekeepingReport = async (date) => {
-  const targetDate = date || new Date().toISOString().split("T")[0];
+const getHousekeepingReport = async (filter = {}) => {
+  let dateParam = typeof filter === "string" ? filter : filter.date;
+  let startDate = filter.startDate || (dateParam !== "all" ? dateParam : null);
+  let endDate = filter.endDate || (dateParam !== "all" ? dateParam : null);
 
-  // 1. All rooms with current reception status + latest housekeeping task on targetDate
+  const isAllDates = dateParam === "all";
+
+  if (!isAllDates && !startDate && !endDate) {
+    const today = new Date().toISOString().split("T")[0];
+    startDate = today;
+    endDate = today;
+  }
+
+  // Conditions for completed tasks in the period
+  let periodWhereClause = "WHERE ht.status IN ('completed', 'inspected')";
+  let periodParams = [];
+
+  if (!isAllDates && startDate && endDate) {
+    periodWhereClause += " AND DATE(COALESCE(ht.completed_at, ht.created_at)) BETWEEN $1::date AND $2::date";
+    periodParams = [startDate, endDate];
+  }
+
+  // Lateral condition for period task in matrix
+  let periodLateralCondition = "";
+  let matrixParams = [];
+
+  if (!isAllDates && startDate && endDate) {
+    periodLateralCondition = "AND DATE(COALESCE(p_ht.completed_at, p_ht.created_at)) BETWEEN $1::date AND $2::date";
+    matrixParams = [startDate, endDate];
+  }
+
   const roomsMatrixQuery = `
     SELECT 
       r.id AS room_id,
@@ -251,48 +278,75 @@ const getHousekeepingReport = async (date) => {
       r.status AS reception_status,
       rt.name AS room_type_name,
       rt.base_rate,
-      latest_task.id AS task_id,
-      latest_task.task_type,
-      latest_task.priority,
-      latest_task.status AS task_status,
-      latest_task.notes AS task_notes,
-      latest_task.completed_at,
-      latest_task.cleaner_id,
-      latest_task.cleaner_name,
-      latest_task.cleaner_position
+      
+      -- Period cleaning task (if cleaned in selected date/range)
+      period_task.id AS period_task_id,
+      period_task.task_type AS period_task_type,
+      period_task.priority AS period_priority,
+      period_task.status AS period_task_status,
+      period_task.notes AS period_task_notes,
+      period_task.completed_at AS period_completed_at,
+      period_task.cleaner_id AS period_cleaner_id,
+      period_task.cleaner_name AS period_cleaner_name,
+      period_task.cleaner_position AS period_cleaner_position,
+
+      -- Latest cleaning ever recorded on this room
+      last_clean.id AS last_task_id,
+      last_clean.task_type AS last_task_type,
+      last_clean.status AS last_task_status,
+      last_clean.completed_at AS last_completed_at,
+      last_clean.cleaner_name AS last_cleaner_name,
+      last_clean.cleaner_position AS last_cleaner_position
+
     FROM rooms r
     LEFT JOIN room_types rt ON r.room_type_id = rt.id
+
+    -- Lateral join for period task
     LEFT JOIN LATERAL (
       SELECT 
-        ht.id,
-        ht.task_type,
-        ht.priority,
-        ht.status,
-        ht.notes,
-        ht.completed_at,
-        e.id AS cleaner_id,
-        CONCAT(e.first_name, ' ', e.last_name) AS cleaner_name,
-        p.title AS cleaner_position
-      FROM housekeeping_tasks ht
-      LEFT JOIN employees e ON ht.assigned_employee_id = e.id
-      LEFT JOIN positions p ON e.position_id = p.id
-      WHERE ht.room_id = r.id
-        AND (
-          (DATE(ht.completed_at) = $1::date AND ht.status IN ('completed', 'inspected'))
-          OR (DATE(ht.created_at) = $1::date)
-        )
-      ORDER BY 
-        CASE WHEN ht.status IN ('completed', 'inspected') THEN 1 ELSE 2 END,
-        ht.completed_at DESC NULLS LAST, 
-        ht.created_at DESC
+        p_ht.id,
+        p_ht.task_type,
+        p_ht.priority,
+        p_ht.status,
+        p_ht.notes,
+        p_ht.completed_at,
+        p_emp.id AS cleaner_id,
+        CONCAT(p_emp.first_name, ' ', p_emp.last_name) AS cleaner_name,
+        p_pos.title AS cleaner_position
+      FROM housekeeping_tasks p_ht
+      LEFT JOIN employees p_emp ON p_ht.assigned_employee_id = p_emp.id
+      LEFT JOIN positions p_pos ON p_emp.position_id = p_pos.id
+      WHERE p_ht.room_id = r.id
+        AND p_ht.status IN ('completed', 'inspected')
+        ${periodLateralCondition}
+      ORDER BY p_ht.completed_at DESC NULLS LAST, p_ht.created_at DESC
       LIMIT 1
-    ) latest_task ON true
+    ) period_task ON true
+
+    -- Lateral join for most recent cleaning ever
+    LEFT JOIN LATERAL (
+      SELECT 
+        l_ht.id,
+        l_ht.task_type,
+        l_ht.status,
+        l_ht.completed_at,
+        CONCAT(l_emp.first_name, ' ', l_emp.last_name) AS cleaner_name,
+        l_pos.title AS cleaner_position
+      FROM housekeeping_tasks l_ht
+      LEFT JOIN employees l_emp ON l_ht.assigned_employee_id = l_emp.id
+      LEFT JOIN positions l_pos ON l_emp.position_id = l_pos.id
+      WHERE l_ht.room_id = r.id
+        AND l_ht.status IN ('completed', 'inspected')
+      ORDER BY l_ht.completed_at DESC NULLS LAST, l_ht.created_at DESC
+      LIMIT 1
+    ) last_clean ON true
+
     ORDER BY r.floor ASC, r.room_number ASC
   `;
 
-  const { rows: roomMatrix } = await pool.query(roomsMatrixQuery, [targetDate]);
+  const { rows: roomMatrix } = await pool.query(roomsMatrixQuery, matrixParams);
 
-  // 2. All cleaning tasks completed on this date
+  // 2. All completed cleaning tasks in selected period
   const completedTasksQuery = `
     SELECT 
       ht.id AS task_id,
@@ -316,13 +370,12 @@ const getHousekeepingReport = async (date) => {
     LEFT JOIN room_types rt ON r.room_type_id = rt.id
     LEFT JOIN employees e ON ht.assigned_employee_id = e.id
     LEFT JOIN positions p ON e.position_id = p.id
-    WHERE DATE(ht.completed_at) = $1::date 
-      AND ht.status IN ('completed', 'inspected')
-    ORDER BY ht.completed_at DESC
+    ${periodWhereClause}
+    ORDER BY ht.completed_at DESC NULLS LAST, ht.created_at DESC
   `;
-  const { rows: completedTasks } = await pool.query(completedTasksQuery, [targetDate]);
+  const { rows: completedTasks } = await pool.query(completedTasksQuery, periodParams);
 
-  // 3. Cleaners productivity breakdown for the date
+  // 3. Cleaners productivity breakdown for the period
   const cleanerStatsQuery = `
     SELECT 
       e.id AS cleaner_id,
@@ -333,12 +386,11 @@ const getHousekeepingReport = async (date) => {
     FROM housekeeping_tasks ht
     JOIN employees e ON ht.assigned_employee_id = e.id
     LEFT JOIN positions p ON e.position_id = p.id
-    WHERE DATE(ht.completed_at) = $1::date
-      AND ht.status IN ('completed', 'inspected')
+    ${periodWhereClause}
     GROUP BY e.id, e.first_name, e.last_name, p.title
     ORDER BY cleaned_count DESC
   `;
-  const { rows: cleanerBreakdown } = await pool.query(cleanerStatsQuery, [targetDate]);
+  const { rows: cleanerBreakdown } = await pool.query(cleanerStatsQuery, periodParams);
 
   // 4. Room status overall counts (Reception perspective)
   const roomStatsQuery = `
@@ -356,7 +408,11 @@ const getHousekeepingReport = async (date) => {
   const distinctRoomsCleaned = new Set(completedTasks.map(t => t.room_id)).size;
 
   return {
-    date: targetDate,
+    period: {
+      startDate: isAllDates ? "All" : startDate,
+      endDate: isAllDates ? "All" : endDate,
+      isAllDates
+    },
     stats: {
       totalRooms: Number(roomStats?.total_rooms || 0),
       cleanedOnDate: distinctRoomsCleaned,
