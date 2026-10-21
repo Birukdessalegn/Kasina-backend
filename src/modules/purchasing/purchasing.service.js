@@ -1015,4 +1015,9 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
     getPurchaseRequestById,
     createPurchaseRequest,
     reviewPurchaseRequest,
+
+    checkPurchaseRequest,
+    verifyBudgetPurchaseRequest,
+    approvePurchaseRequest,
+    rejectPurchaseRequest,
   };
