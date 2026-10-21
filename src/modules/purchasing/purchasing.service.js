@@ -681,7 +681,23 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
         u_app.username AS approved_by_username,
         ru.username AS reviewed_by_username,
         (SELECT COUNT(*)::int FROM purchase_request_items pri WHERE pri.purchase_request_id = pr.id) AS items_count,
-        (SELECT COALESCE(SUM(pri.quantity * pri.estimated_price), 0) FROM purchase_request_items pri WHERE pri.purchase_request_id = pr.id) AS estimated_total
+        (SELECT COALESCE(SUM(pri.quantity * pri.estimated_price), 0) FROM purchase_request_items pri WHERE pri.purchase_request_id = pr.id) AS estimated_total,
+        (
+          SELECT COALESCE(json_agg(json_build_object(
+            'id', pri.id,
+            'purchase_request_id', pri.purchase_request_id,
+            'product_id', pri.product_id,
+            'item_name', pri.item_name,
+            'product_name', COALESCE(pri.item_name, p.name, 'Item'),
+            'quantity', pri.quantity,
+            'unit', COALESCE(pri.unit, p.unit, 'pcs'),
+            'estimated_price', pri.estimated_price,
+            'notes', pri.notes
+          ) ORDER BY pri.id ASC), '[]'::json)
+          FROM purchase_request_items pri
+          LEFT JOIN products p ON pri.product_id = p.id
+          WHERE pri.purchase_request_id = pr.id
+        ) AS items
       FROM purchase_requests pr
       LEFT JOIN departments d ON pr.department_id = d.id
       LEFT JOIN outlets o ON pr.outlet_id = o.id
