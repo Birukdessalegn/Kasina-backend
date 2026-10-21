@@ -154,6 +154,36 @@ const initializeDatabase = async () => {
    ALTER TABLE room_payments ADD COLUMN IF NOT EXISTS receipt_image TEXT;
    ALTER TABLE room_payments ADD COLUMN IF NOT EXISTS image_url TEXT;
           END IF;
+
+          -- Ensure essential columns exist in purchase_requests
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'purchase_requests') THEN
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS purpose TEXT;
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS project_name VARCHAR(255);
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS enclosure VARCHAR(255);
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS checked_by UUID REFERENCES users(id);
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS checked_at TIMESTAMP;
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS checked_notes TEXT;
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS is_budgeted BOOLEAN DEFAULT FALSE;
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS budget_verified_by UUID REFERENCES users(id);
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS budget_verified_at TIMESTAMP;
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS budget_notes TEXT;
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id);
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+            ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS approval_notes TEXT;
+          END IF;
+
+          -- Ensure essential columns exist in purchase_request_items
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'purchase_request_items') THEN
+            ALTER TABLE purchase_request_items ALTER COLUMN product_id DROP NOT NULL;
+            ALTER TABLE purchase_request_items ADD COLUMN IF NOT EXISTS item_name VARCHAR(255);
+          END IF;
+
+          -- Ensure essential columns exist in stock_transfers
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'stock_transfers') THEN
+            ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS checked_by UUID REFERENCES users(id);
+            ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS checked_at TIMESTAMP;
+            ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS checked_notes TEXT;
+          END IF;
         END $$;
       `);
       console.log("✅ Database schema verified and legacy table columns synchronized");
