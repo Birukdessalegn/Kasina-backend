@@ -317,7 +317,7 @@ const requestTransfer = async ({
         requested_by,
         notes
       )
-      VALUES ($1, 'main', $2, 'pending', $3, $4)
+      VALUES ($1, 'main', $2, 'pending_fb', $3, $4)
       RETURNING *
       `,
       [
@@ -350,11 +350,11 @@ const requestTransfer = async ({
 
     await client.query("COMMIT");
 
-    // Notify F&B Manager
+    // Notify F&B Manager for initial verification
     await notificationsService.createNotification({
-      targetRoles: ["admin", "manager"],
-      title: `${toLocation.toUpperCase()} Stock Requisition Request`,
-      message: `${toLocation.toUpperCase()} has requested a restock of ${items.length} items (${transferNumber}).`,
+      targetRoles: ["admin", "manager", "fnb_manager", "fb_controller"],
+      title: `${toLocation.toUpperCase()} Store Requisition Submitted`,
+      message: `${toLocation.toUpperCase()} submitted requisition (${transferNumber}) for ${items.length} items. Awaiting F&B verification.`,
       type: "requisition",
       referenceType: "transfer",
       referenceId: transfer.id,
@@ -385,11 +385,19 @@ const getTransferById = async (id) => {
       st.notes,
       st.created_at,
       st.updated_at,
+      st.checked_at,
+      st.checked_notes,
+      st.approved_at,
+      st.rejection_reason,
       u_req.username AS requested_by_username,
+      u_chk.username AS checked_by_username,
+      u_app.username AS approved_by_username,
       u_disp.username AS dispatched_by_username,
       u_rec.username AS received_by_username
     FROM stock_transfers st
     LEFT JOIN users u_req ON st.requested_by = u_req.id
+    LEFT JOIN users u_chk ON st.checked_by = u_chk.id
+    LEFT JOIN users u_app ON st.approved_by = u_app.id
     LEFT JOIN users u_disp ON st.dispatched_by = u_disp.id
     LEFT JOIN users u_rec ON st.received_by = u_rec.id
     WHERE st.id = $1
@@ -442,8 +450,14 @@ const getTransfers = async ({ status, toLocation, fromLocation, limit = 50 } = {
       st.notes,
       st.created_at,
       st.updated_at,
+      st.checked_at,
+      st.checked_notes,
+      st.approved_at,
+      st.rejection_reason,
       u_disp.username AS dispatched_by_username,
       u_req.username AS requested_by_username,
+      u_chk.username AS checked_by_username,
+      u_app.username AS approved_by_username,
       (SELECT COUNT(*) FROM stock_transfer_items sti WHERE sti.transfer_id = st.id) AS total_items,
       (SELECT COALESCE(SUM(quantity), 0) FROM stock_transfer_items sti WHERE sti.transfer_id = st.id) AS total_quantity,
       (
@@ -461,13 +475,23 @@ const getTransfers = async ({ status, toLocation, fromLocation, limit = 50 } = {
     FROM stock_transfers st
     LEFT JOIN users u_disp ON st.dispatched_by = u_disp.id
     LEFT JOIN users u_req ON st.requested_by = u_req.id
+    LEFT JOIN users u_chk ON st.checked_by = u_chk.id
+    LEFT JOIN users u_app ON st.approved_by = u_app.id
     WHERE 1=1
   `;
   const params = [];
 
   if (status) {
-    params.push(status);
-    query += ` AND st.status = $${params.length}`;
+    if (status === 'pending') {
+      query += ` AND st.status IN ('pending', 'pending_fb', 'pending_store')`;
+    } else if (status.includes(',')) {
+      const parts = status.split(',').map(s => s.trim().toLowerCase());
+      params.push(parts);
+      query += ` AND st.status = ANY(${params.length})`;
+    } else {
+      params.push(status);
+      query += ` AND st.status = ${params.length}`;
+    }
   }
 
   if (toLocation) {
@@ -491,8 +515,66 @@ const getTransfers = async ({ status, toLocation, fromLocation, limit = 50 } = {
   return result.rows;
 };
 
+
 // ============================================================
-// APPROVE REQUISITION / TRANSFER (F&B CONTROLLER)
+// CHECK TRANSFER (F&B CONTROLLER / MANAGER)
+// ============================================================
+
+const checkTransferByFB = async (id, { userId, notes } = {}) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const transferRes = await client.query(
+      `SELECT * FROM stock_transfers WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+
+    if (transferRes.rows.length === 0) {
+      throw new Error(`Transfer #${id} not found.`);
+    }
+
+    const transfer = transferRes.rows[0];
+
+    if (transfer.status !== "pending_fb" && transfer.status !== "pending") {
+      throw new Error(`Cannot check transfer. Current status is already '${transfer.status}'.`);
+    }
+
+    await client.query(
+      `UPDATE stock_transfers
+       SET status = 'pending_store',
+           checked_by = $1,
+           checked_at = CURRENT_TIMESTAMP,
+           checked_notes = COALESCE($2, checked_notes),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [userId || null, notes || null, id]
+    );
+
+    await client.query("COMMIT");
+
+    // Notify Storekeeper / Central Store Manager
+    await notificationsService.createNotification({
+      targetRoles: ["admin", "store_manager", "accountant_manager", "manager"],
+      title: `Store Requisition Verified by F&B`,
+      message: `Requisition (${transfer.transfer_number}) for ${transfer.to_location.toUpperCase()} was verified by F&B. Ready for Storekeeper stock issuance.`,
+      type: "requisition",
+      referenceType: "transfer",
+      referenceId: transfer.id,
+    });
+
+    return getTransferById(id);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+// ============================================================
+// APPROVE REQUISITION / TRANSFER (STOREKEEPER ISSUANCE)
 // ============================================================
 
 const approveTransfer = async (id, { userId, notes } = {}) => {
@@ -512,7 +594,7 @@ const approveTransfer = async (id, { userId, notes } = {}) => {
 
     const transfer = transferRes.rows[0];
 
-    if (transfer.status !== "pending") {
+    if (transfer.status !== "pending_store" && transfer.status !== "pending") {
       throw new Error(`Cannot approve transfer. Status is already '${transfer.status}'.`);
     }
 
@@ -612,7 +694,7 @@ const rejectTransfer = async (id, { userId, notes } = {}) => {
          approved_by = $2,
          approved_at = CURRENT_TIMESTAMP,
          updated_at = CURRENT_TIMESTAMP
-     WHERE id = $3 AND status = 'pending'
+     WHERE id = $3 AND status IN ('pending', 'pending_fb', 'pending_store')
      RETURNING *`,
     [notes || "Rejected by F&B Controller", userId || null, id]
   );
@@ -627,6 +709,7 @@ const rejectTransfer = async (id, { userId, notes } = {}) => {
 module.exports = {
   createTransfer,
   requestTransfer,
+  checkTransferByFB,
   approveTransfer,
   rejectTransfer,
   getTransferById,

@@ -36,6 +36,7 @@ router.post("/transfers", optionalAuth, transfersController.createTransfer);
 router.post("/transfers/request", optionalAuth, transfersController.requestTransfer);
 router.get("/transfers", transfersController.getTransfers);
 router.get("/transfers/:id", transfersController.getTransferById);
+router.put("/transfers/:id/check", optionalAuth, transfersController.checkTransfer);
 router.put("/transfers/:id/approve", optionalAuth, transfersController.approveTransfer);
 router.put("/transfers/:id/reject", optionalAuth, transfersController.rejectTransfer);
 

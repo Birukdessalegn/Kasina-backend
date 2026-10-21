@@ -149,7 +149,44 @@ const getTransferById = async (req, res) => {
 };
 
 // ============================================================
-// APPROVE TRANSFER (F&B CONTROLLER)
+// CHECK TRANSFER (F&B CONTROLLER / MANAGER)
+// ============================================================
+
+const checkTransfer = async (req, res) => {
+  try {
+    const role = String(req.user?.role || "").toLowerCase();
+    if (role === "chef" || role === "waiter" || role === "bartender") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: Department staff cannot check their own restock requisitions.",
+      });
+    }
+
+    const { id } = req.params;
+    const { notes } = req.body;
+    const userId = req.user?.id || null;
+
+    const transfer = await transfersService.checkTransferByFB(id, {
+      userId,
+      notes,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Requisition checked and forwarded to Storekeeper",
+      data: transfer,
+    });
+  } catch (error) {
+    console.error("CHECK TRANSFER ERROR:", error);
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to check transfer",
+    });
+  }
+};
+
+// ============================================================
+// APPROVE / ISSUE TRANSFER (STOREKEEPER)
 // ============================================================
 
 const approveTransfer = async (req, res) => {
@@ -225,6 +262,7 @@ const rejectTransfer = async (req, res) => {
 module.exports = {
   createTransfer,
   requestTransfer,
+  checkTransfer,
   approveTransfer,
   rejectTransfer,
   getTransfers,
