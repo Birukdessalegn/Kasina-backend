@@ -393,6 +393,89 @@ const createPurchaseRequest = async (req, res) => {
   }
 };
 
+
+const checkPurchaseRequest = async (req, res) => {
+  try {
+    const request = await purchasingService.checkPurchaseRequest(req.params.id, {
+      userId: req.user?.id,
+      notes: req.body.notes,
+    });
+    res.json({
+      success: true,
+      message: "Purchase requisition checked and forwarded for budget verification",
+      request,
+    });
+  } catch (error) {
+    console.error("Check purchase request error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to check purchase request",
+    });
+  }
+};
+
+const verifyBudgetPurchaseRequest = async (req, res) => {
+  try {
+    const { isBudgeted, notes } = req.body;
+    const request = await purchasingService.verifyBudgetPurchaseRequest(req.params.id, {
+      userId: req.user?.id,
+      isBudgeted,
+      notes,
+    });
+    res.json({
+      success: true,
+      message: "Purchase requisition budget verified and forwarded for General Manager approval",
+      request,
+    });
+  } catch (error) {
+    console.error("Verify budget error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to verify budget for purchase request",
+    });
+  }
+};
+
+const approvePurchaseRequest = async (req, res) => {
+  try {
+    const request = await purchasingService.approvePurchaseRequest(req.params.id, {
+      userId: req.user?.id,
+      notes: req.body.notes,
+    });
+    res.json({
+      success: true,
+      message: "Purchase requisition approved successfully",
+      request,
+    });
+  } catch (error) {
+    console.error("Approve purchase request error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to approve purchase request",
+    });
+  }
+};
+
+const rejectPurchaseRequest = async (req, res) => {
+  try {
+    const request = await purchasingService.rejectPurchaseRequest(req.params.id, {
+      userId: req.user?.id,
+      reason: req.body.reason || req.body.rejectionReason,
+    });
+    res.json({
+      success: true,
+      message: "Purchase requisition rejected",
+      request,
+    });
+  } catch (error) {
+    console.error("Reject purchase request error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to reject purchase request",
+    });
+  }
+};
+
 const reviewPurchaseRequest = async (req, res) => {
   try {
     const request = await purchasingService.reviewPurchaseRequest(req.params.id, req.body, req.user?.id);
@@ -426,6 +509,10 @@ module.exports = {
   getPurchaseRequests,
   getPurchaseRequest,
   createPurchaseRequest,
+  checkPurchaseRequest,
+  verifyBudgetPurchaseRequest,
+  approvePurchaseRequest,
+  rejectPurchaseRequest,
   reviewPurchaseRequest,
 };
   

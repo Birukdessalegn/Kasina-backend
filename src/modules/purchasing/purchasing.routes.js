@@ -19,6 +19,10 @@ router.get("/requests", purchasingController.getPurchaseRequests);
 router.get("/requests/:id", purchasingController.getPurchaseRequest);
 router.post("/requests", purchasingController.createPurchaseRequest);
 router.patch("/requests/:id/review", purchasingController.reviewPurchaseRequest);
+router.put("/requests/:id/check", purchasingController.checkPurchaseRequest);
+router.put("/requests/:id/budget-verify", purchasingController.verifyBudgetPurchaseRequest);
+router.put("/requests/:id/approve", purchasingController.approvePurchaseRequest);
+router.put("/requests/:id/reject", purchasingController.rejectPurchaseRequest);
 
 // ============================================================
 // SUPPLIERS

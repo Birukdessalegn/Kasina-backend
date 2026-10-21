@@ -676,6 +676,9 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
         o.code AS outlet_code,
         u.username AS requested_by_username,
         CONCAT(e.first_name, ' ', e.last_name) AS requested_by_name,
+        u_chk.username AS checked_by_username,
+        u_bud.username AS budget_verified_by_username,
+        u_app.username AS approved_by_username,
         ru.username AS reviewed_by_username,
         (SELECT COUNT(*)::int FROM purchase_request_items pri WHERE pri.purchase_request_id = pr.id) AS items_count,
         (SELECT COALESCE(SUM(pri.quantity * pri.estimated_price), 0) FROM purchase_request_items pri WHERE pri.purchase_request_id = pr.id) AS estimated_total
@@ -684,6 +687,9 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
       LEFT JOIN outlets o ON pr.outlet_id = o.id
       LEFT JOIN users u ON pr.requested_by = u.id
       LEFT JOIN employees e ON e.user_id = u.id
+      LEFT JOIN users u_chk ON pr.checked_by = u_chk.id
+      LEFT JOIN users u_bud ON pr.budget_verified_by = u_bud.id
+      LEFT JOIN users u_app ON pr.approved_by = u_app.id
       LEFT JOIN users ru ON pr.reviewed_by = ru.id
     `;
 
@@ -691,8 +697,16 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
     const params = [];
 
     if (filters.status) {
-      params.push(filters.status);
-      conditions.push(`pr.status = $${params.length}`);
+      if (filters.status === 'pending') {
+        conditions.push("pr.status IN ('pending', 'pending_check', 'pending_finance', 'pending_approval')");
+      } else if (filters.status.includes(',')) {
+        const parts = filters.status.split(',').map(s => s.trim().toLowerCase());
+        params.push(parts);
+        conditions.push(`pr.status = ANY($${params.length})`);
+      } else {
+        params.push(filters.status);
+        conditions.push(`pr.status = $${params.length}`);
+      }
     }
 
     if (filters.departmentId) {
@@ -726,12 +740,18 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
         o.code AS outlet_code,
         u.username AS requested_by_username,
         CONCAT(e.first_name, ' ', e.last_name) AS requested_by_name,
+        u_chk.username AS checked_by_username,
+        u_bud.username AS budget_verified_by_username,
+        u_app.username AS approved_by_username,
         ru.username AS reviewed_by_username
       FROM purchase_requests pr
       LEFT JOIN departments d ON pr.department_id = d.id
       LEFT JOIN outlets o ON pr.outlet_id = o.id
       LEFT JOIN users u ON pr.requested_by = u.id
       LEFT JOIN employees e ON e.user_id = u.id
+      LEFT JOIN users u_chk ON pr.checked_by = u_chk.id
+      LEFT JOIN users u_bud ON pr.budget_verified_by = u_bud.id
+      LEFT JOIN users u_app ON pr.approved_by = u_app.id
       LEFT JOIN users ru ON pr.reviewed_by = ru.id
       WHERE pr.id = $1
       `,
@@ -744,12 +764,12 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
       `
       SELECT 
         pri.*,
-        p.name AS product_name,
+        COALESCE(pri.item_name, p.name) AS product_name,
         p.product_code,
         p.price,
         p.cost_price
       FROM purchase_request_items pri
-      JOIN products p ON pri.product_id = p.id
+      LEFT JOIN products p ON pri.product_id = p.id
       WHERE pri.purchase_request_id = $1
       ORDER BY pri.id ASC
       `,
@@ -768,7 +788,7 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
     try {
       await client.query("BEGIN");
 
-      const { departmentId, outletId, priority, notes, items } = data;
+      const { departmentId, outletId, priority, purpose, projectName, enclosure, notes, items } = data;
 
       if (!items || items.length === 0) {
         throw new Error("Purchase request must include at least one item");
@@ -787,10 +807,13 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
           outlet_id,
           requested_by,
           priority,
+          purpose,
+          project_name,
+          enclosure,
           notes,
           status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_check')
         RETURNING *
         `,
         [
@@ -799,6 +822,9 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
           outletId || null,
           userId || null,
           priority || "normal",
+          purpose || null,
+          projectName || null,
+          enclosure || null,
           notes || null,
         ]
       );
@@ -811,16 +837,18 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
           INSERT INTO purchase_request_items (
             purchase_request_id,
             product_id,
+            item_name,
             quantity,
             unit,
             estimated_price,
             notes
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           `,
           [
             request.id,
-            item.productId || item.product_id,
+            item.productId ? Number(item.productId) : null,
+            item.itemName || item.product_name || null,
             Number(item.quantity),
             item.unit || "pcs",
             Number(item.estimatedPrice || item.estimated_price || 0),
@@ -840,6 +868,106 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
     }
   };
 
+  // Stage 1: Checked By (F&B Controller / Department Head)
+  const checkPurchaseRequest = async (id, { userId, notes } = {}) => {
+    const result = await pool.query(
+      `
+      UPDATE purchase_requests
+      SET 
+        status = 'pending_finance',
+        checked_by = $1,
+        checked_at = CURRENT_TIMESTAMP,
+        checked_notes = COALESCE($2, checked_notes),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND status IN ('pending', 'pending_check')
+      RETURNING *
+      `,
+      [userId || null, notes || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Purchase request not found or not in pending check status");
+    }
+
+    return getPurchaseRequestById(id);
+  };
+
+  // Stage 2: Budget Verified By (Finance / Accountant Manager)
+  const verifyBudgetPurchaseRequest = async (id, { userId, isBudgeted = true, notes } = {}) => {
+    const result = await pool.query(
+      `
+      UPDATE purchase_requests
+      SET 
+        status = 'pending_approval',
+        is_budgeted = $1,
+        budget_verified_by = $2,
+        budget_verified_at = CURRENT_TIMESTAMP,
+        budget_notes = COALESCE($3, budget_notes),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4 AND status IN ('pending', 'pending_check', 'pending_finance')
+      RETURNING *
+      `,
+      [isBudgeted !== false, userId || null, notes || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Purchase request not found or not in pending finance status");
+    }
+
+    return getPurchaseRequestById(id);
+  };
+
+  // Stage 3: Approved By (General Manager / Owner)
+  const approvePurchaseRequest = async (id, { userId, notes } = {}) => {
+    const result = await pool.query(
+      `
+      UPDATE purchase_requests
+      SET 
+        status = 'approved',
+        approved_by = $1,
+        approved_at = CURRENT_TIMESTAMP,
+        approval_notes = COALESCE($2, approval_notes),
+        reviewed_by = $1,
+        reviewed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND status IN ('pending', 'pending_check', 'pending_finance', 'pending_approval')
+      RETURNING *
+      `,
+      [userId || null, notes || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Purchase request not found or already processed");
+    }
+
+    return getPurchaseRequestById(id);
+  };
+
+  // Rejection by any stage
+  const rejectPurchaseRequest = async (id, { userId, reason } = {}) => {
+    const result = await pool.query(
+      `
+      UPDATE purchase_requests
+      SET 
+        status = 'rejected',
+        rejection_reason = $1,
+        reviewed_by = $2,
+        reviewed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND status IN ('pending', 'pending_check', 'pending_finance', 'pending_approval')
+      RETURNING *
+      `,
+      [reason || 'Purchase requisition rejected during review', userId || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error("Purchase request not found or already processed");
+    }
+
+    return getPurchaseRequestById(id);
+  };
+
+  // Legacy review method for backward compatibility
   const reviewPurchaseRequest = async (id, reviewData, userId) => {
     const { status, rejectionReason } = reviewData;
 
@@ -847,26 +975,11 @@ const receivePurchase = async (purchaseId, userId, options = {}) => {
       throw new Error("Invalid status. Allowed values: 'approved', 'rejected'");
     }
 
-    const result = await pool.query(
-      `
-      UPDATE purchase_requests
-      SET 
-        status = $1,
-        reviewed_by = $2,
-        reviewed_at = CURRENT_TIMESTAMP,
-        rejection_reason = $3,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
-      RETURNING *
-      `,
-      [status, userId || null, rejectionReason || null, id]
-    );
-
-    if (result.rows.length === 0) {
-      throw new Error("Purchase request not found");
+    if (status === 'approved') {
+      return approvePurchaseRequest(id, { userId, notes: reviewData.notes });
+    } else {
+      return rejectPurchaseRequest(id, { userId, reason: rejectionReason || reviewData.notes });
     }
-
-    return getPurchaseRequestById(id);
   };
 
   module.exports = {
