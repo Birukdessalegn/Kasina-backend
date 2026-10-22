@@ -17,8 +17,7 @@ const getAllEmployees = async () => {
       e.address,
       e.hire_date,
       e.salary,
-      e.status,
-      e.user_id,
+      e.status, e.user_id, e.shift_start_time, e.shift_end_time, e.work_hours,
       u.username,
 
       r.id AS role_id,
@@ -84,8 +83,7 @@ const getEmployeeById = async (id) => {
       e.address,
       e.hire_date,
       e.salary,
-      e.status,
-      e.user_id,
+      e.status, e.user_id, e.shift_start_time, e.shift_end_time, e.work_hours,
       u.username,
 
       r.id AS role_id,
@@ -161,6 +159,9 @@ const createEmployee = async (employee) => {
     const rawOutlet = employee.outletId || employee.outlet_id || employee.outlet;
     const rawPosition = employee.positionId || employee.position_id || employee.position;
     const rawReportsTo = employee.reportsToEmployeeId || employee.reports_to_employee_id || employee.reportsTo;
+    const shiftStartTime = employee.shiftStartTime || employee.shift_start_time || employee.shift_start || '18:00';
+    const shiftEndTime = employee.shiftEndTime || employee.shift_end_time || employee.shift_end || '07:00';
+    const workHours = employee.workHours || employee.work_hours || 8.00;
 
     // -----------------------------------------------------
     // VALIDATE LOGIN INFORMATION (Optional for non-login staff)
@@ -545,8 +546,7 @@ const createEmployee = async (employee) => {
         e.address,
         e.hire_date,
         e.salary,
-        e.status,
-        e.user_id,
+        e.status, e.user_id, e.shift_start_time, e.shift_end_time, e.work_hours,
 
         r.id AS role_id,
         r.name AS role,
@@ -884,8 +884,7 @@ const updateEmployee = async (id, employee) => {
       e.address,
       e.hire_date,
       e.salary,
-      e.status,
-      e.user_id,
+      e.status, e.user_id, e.shift_start_time, e.shift_end_time, e.work_hours,
       r.id AS role_id,
       r.name AS role,
       d.id AS department_id,

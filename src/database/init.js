@@ -104,6 +104,9 @@ const initializeDatabase = async () => {
             ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
             ALTER TABLE employees ADD COLUMN IF NOT EXISTS email VARCHAR(150);
             ALTER TABLE employees ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active';
+            ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_start_time TIME DEFAULT '18:00';
+            ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_end_time TIME DEFAULT '07:00';
+            ALTER TABLE employees ADD COLUMN IF NOT EXISTS work_hours NUMERIC(4,2) DEFAULT 8.00;
           END IF;
 
           -- Ensure essential columns exist in users

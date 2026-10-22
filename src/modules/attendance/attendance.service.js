@@ -14,6 +14,9 @@ const getAllAttendance = async (filters = {}) => {
       e.phone,
       d.name AS department,
       r.name AS role,
+      e.shift_start_time,
+      e.shift_end_time,
+      e.work_hours,
       a.attendance_date,
       a.check_in,
       a.check_out,
@@ -99,6 +102,9 @@ const getTodayAttendance = async () => {
       e.last_name,
       d.name AS department,
       r.name AS role,
+      e.shift_start_time,
+      e.shift_end_time,
+      e.work_hours,
       a.attendance_date,
       a.check_in,
       a.check_out,
@@ -113,11 +119,9 @@ const getTodayAttendance = async () => {
     JOIN employees e ON a.employee_id = e.id
     LEFT JOIN departments d ON e.department_id = d.id
     LEFT JOIN roles r ON e.role_id = r.id
-    WHERE a.attendance_date = (
-      CASE
-        WHEN EXTRACT(HOUR FROM CURRENT_TIME) < 7 THEN (CURRENT_DATE - INTERVAL '1 day')::date
-        ELSE CURRENT_DATE
-      END
+    WHERE (
+      a.attendance_date = CURRENT_DATE
+      OR (a.attendance_date = (CURRENT_DATE - INTERVAL '1 day')::date AND (a.check_out IS NULL OR a.check_in >= NOW() - INTERVAL '18 hours'))
     )
     ORDER BY a.check_in ASC
   `);
@@ -132,22 +136,67 @@ const getTodayAttendance = async () => {
 // - After 6:20 PM (18:20) up to 7:00 AM -> 'late'
 // - Shift date between 00:00 and 07:00 AM -> assigned to yesterday's date
 const checkIn = async (employeeId, notes = null) => {
+  // 1. Fetch employee's assigned shift working hours
+  const empRes = await pool.query(
+    "SELECT id, shift_start_time, shift_end_time, work_hours FROM employees WHERE id = $1",
+    [employeeId]
+  );
+
+  if (empRes.rows.length === 0) {
+    throw new Error("Employee not found");
+  }
+
+  const emp = empRes.rows[0];
+  const shiftStartStr = emp.shift_start_time || "18:00:00";
+  const shiftEndStr = emp.shift_end_time || "07:00:00";
+
+  // Parse shift times (HH:MM)
+  const [startH, startM] = shiftStartStr.split(":").map(Number);
+  const [endH, endM] = shiftEndStr.split(":").map(Number);
+
+  const isOvernight = (startH > endH) || (startH === endH && startM > endM);
+
+  const now = new Date();
+  const currentH = now.getHours();
+  const currentM = now.getMinutes();
+
+  const currentTotalMins = currentH * 60 + currentM;
+  const shiftStartMins = startH * 60 + startM;
+  const gracePeriodMins = 20; // 20-minute punctuality grace period
+
+  let attendanceDateStr;
+  let status = "present";
+
+  if (isOvernight) {
+    // Overnight shift (e.g. 18:00 to 07:00)
+    const shiftEndMins = endH * 60 + endM;
+    if (currentTotalMins <= shiftEndMins) {
+      // Checked in past midnight between 00:00 and shift end (assigned to shift starting yesterday)
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      attendanceDateStr = yesterday.toISOString().slice(0, 10);
+      status = "late";
+    } else {
+      // Checked in before midnight
+      attendanceDateStr = now.toISOString().slice(0, 10);
+      if (currentTotalMins > shiftStartMins + gracePeriodMins) {
+        status = "late";
+      } else {
+        status = "present";
+      }
+    }
+  } else {
+    // Daytime shift (e.g. 07:00 to 18:00, 08:00 to 17:00)
+    attendanceDateStr = now.toISOString().slice(0, 10);
+    if (currentTotalMins > shiftStartMins + gracePeriodMins) {
+      status = "late";
+    } else {
+      status = "present";
+    }
+  }
+
   const result = await pool.query(
     `
-    WITH calc AS (
-      SELECT
-        CASE
-          WHEN EXTRACT(HOUR FROM CURRENT_TIME) < 7 THEN CURRENT_DATE - 1
-          ELSE CURRENT_DATE
-        END AS calc_date,
-        CASE
-          WHEN (EXTRACT(HOUR FROM CURRENT_TIME) * 60 + EXTRACT(MINUTE FROM CURRENT_TIME)) <= (18 * 60 + 20)
-               AND (EXTRACT(HOUR FROM CURRENT_TIME) * 60 + EXTRACT(MINUTE FROM CURRENT_TIME)) >= (17 * 60 + 50) THEN 'present'
-          WHEN (EXTRACT(HOUR FROM CURRENT_TIME) * 60 + EXTRACT(MINUTE FROM CURRENT_TIME)) < (17 * 60 + 50)
-               AND EXTRACT(HOUR FROM CURRENT_TIME) >= 7 THEN 'present'
-          ELSE 'late'
-        END AS calc_status
-    )
     INSERT INTO attendance (
       employee_id,
       attendance_date,
@@ -155,13 +204,7 @@ const checkIn = async (employeeId, notes = null) => {
       status,
       notes
     )
-    SELECT
-      $1,
-      calc_date,
-      CURRENT_TIMESTAMP,
-      calc_status::attendance_status,
-      $2
-    FROM calc
+    VALUES ($1, $2, CURRENT_TIMESTAMP, $3::attendance_status, $4)
     ON CONFLICT (employee_id, attendance_date)
     DO UPDATE SET
       check_in = COALESCE(attendance.check_in, CURRENT_TIMESTAMP),
@@ -171,7 +214,7 @@ const checkIn = async (employeeId, notes = null) => {
       updated_at = CURRENT_TIMESTAMP
     RETURNING *
     `,
-    [employeeId, notes]
+    [employeeId, attendanceDateStr, status, notes]
   );
 
   return result.rows[0];
