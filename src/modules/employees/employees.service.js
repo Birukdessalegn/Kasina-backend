@@ -18,6 +18,7 @@ const getAllEmployees = async () => {
       e.hire_date,
       e.salary,
       e.status, e.user_id, e.shift_start_time, e.shift_end_time, e.work_hours,
+      CONCAT(TO_CHAR(e.shift_start_time, 'FMHH12:MI AM'), ' - ', TO_CHAR(e.shift_end_time, 'FMHH12:MI AM')) AS shift,
       u.username,
 
       r.id AS role_id,
@@ -756,6 +757,9 @@ const updateEmployee = async (id, employee) => {
       hire_date = COALESCE($12, hire_date),
       salary = COALESCE($13, salary),
       status = COALESCE($14::employee_status, status),
+      shift_start_time = COALESCE($16, shift_start_time),
+      shift_end_time = COALESCE($17, shift_end_time),
+      work_hours = COALESCE($18, work_hours),
       updated_at = CURRENT_TIMESTAMP
     WHERE id = $15
     RETURNING *
@@ -776,6 +780,9 @@ const updateEmployee = async (id, employee) => {
       salary !== undefined && salary !== null && salary !== "" ? Number(salary) : null,
       status || null,
       id,
+      employee.shiftStartTime || employee.shift_start_time || null,
+      employee.shiftEndTime || employee.shift_end_time || null,
+      employee.workHours || employee.work_hours || null,
     ]
   );
 
