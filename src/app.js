@@ -61,7 +61,7 @@ app.use((req, res, next) => {
   );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+    "Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Vendor-Key, X-Master-Key"
   );
 
   if (req.method === "OPTIONS") {
@@ -79,7 +79,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-Vendor-Key", "X-Master-Key"],
   optionsSuccessStatus: 200
 };
 
