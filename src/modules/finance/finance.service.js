@@ -231,20 +231,26 @@ const getFinanceOverview = async (filters = {}) => {
     FROM room_reservations
     WHERE status != 'cancelled' ${roomDate.clause}
   `;
-  const roomRes = await pool.query(roomSql, roomDate.params);
+  const roomRes = await pool.query(roomSql, roomDate.params).catch((err) => {
+    console.error("Error aggregating rooms in financial overview:", err.message);
+    return { rows: [{ total_paid: 0, total_unpaid: 0, total_reservations: 0, active_checked_in: 0 }] };
+  });
   const roomData = roomRes.rows[0] || {};
 
-  // 2. F&B / POS Orders Revenue Aggregation (from orders)
+  // 2. F&B / POS Orders Revenue Aggregation (from orders - column is "total")
   const orderDate = buildDateCondition("created_at");
   const orderSql = `
     SELECT 
-      COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE COALESCE(paid_amount, 0) END), 0)::float AS total_paid,
-      COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN (total_amount - COALESCE(paid_amount, 0)) ELSE 0 END), 0)::float AS total_unpaid,
+      COALESCE(SUM(CASE WHEN payment_status::text = 'paid' THEN total ELSE 0 END), 0)::float AS total_paid,
+      COALESCE(SUM(CASE WHEN payment_status::text != 'paid' THEN total ELSE 0 END), 0)::float AS total_unpaid,
       COUNT(id)::int AS total_orders
     FROM orders
-    WHERE status != 'cancelled' ${orderDate.clause}
+    WHERE status::text != 'cancelled' ${orderDate.clause}
   `;
-  const orderRes = await pool.query(orderSql, orderDate.params);
+  const orderRes = await pool.query(orderSql, orderDate.params).catch((err) => {
+    console.error("Error aggregating orders in financial overview:", err.message);
+    return { rows: [{ total_paid: 0, total_unpaid: 0, total_orders: 0 }] };
+  });
   const orderData = orderRes.rows[0] || {};
 
   // 2b. Room Payments Breakdown (from room_payments table)
