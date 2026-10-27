@@ -286,11 +286,34 @@ const getReports = async (req, res) => {
   }
 };
 
+
+const amendPrice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rate_per_night, reason } = req.body;
+    const updated = await reservationsService.amendReservationPrice(
+      id,
+      { rate_per_night, reason },
+      req.user?.id
+    );
+    res.json({
+      success: true,
+      message: "Room price amended successfully and notification dispatched to Admin & Finance.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Error amending room price:", error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+
 module.exports = {
   getReservations,
   getReservation,
   createReservation,
   updateReservation,
+  amendPrice,
   uploadGuestIdImage,
   uploadStandaloneGuestId,
   checkIn,

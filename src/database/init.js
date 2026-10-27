@@ -182,6 +182,15 @@ const initializeDatabase = async () => {
             ALTER TABLE purchase_request_items ADD COLUMN IF NOT EXISTS item_name VARCHAR(255);
           END IF;
 
+          
+          -- Ensure price amendment audit columns exist in room_reservations
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'room_reservations') THEN
+            ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS original_rate_per_night NUMERIC(12,2);
+            ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS price_amendment_reason TEXT;
+            ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS price_amended_by UUID REFERENCES users(id);
+            ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS price_amended_at TIMESTAMP;
+          END IF;
+
           -- Ensure essential columns exist in stock_transfers
           IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'stock_transfers') THEN
             ALTER TABLE stock_transfers ADD COLUMN IF NOT EXISTS checked_by UUID REFERENCES users(id);

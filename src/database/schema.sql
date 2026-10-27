@@ -191,6 +191,9 @@ CREATE TABLE IF NOT EXISTS employees (
     hire_date DATE,
     salary NUMERIC(12,2) DEFAULT 0,
     status employee_status DEFAULT 'active',
+    shift_start_time TIME DEFAULT '18:00',
+    shift_end_time TIME DEFAULT '07:00',
+    work_hours NUMERIC(4,2) DEFAULT 8.00,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -745,6 +748,10 @@ CREATE TABLE IF NOT EXISTS room_reservations (
     payment_status VARCHAR(30) NOT NULL DEFAULT 'unpaid',
     status VARCHAR(30) NOT NULL DEFAULT 'confirmed',
     special_requests TEXT,
+    original_rate_per_night NUMERIC(12,2),
+    price_amendment_reason TEXT,
+    price_amended_by UUID REFERENCES users(id),
+    price_amended_at TIMESTAMP,
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1337,3 +1344,21 @@ CREATE TABLE IF NOT EXISTS stock_shortage_requests (
 
 CREATE INDEX IF NOT EXISTS idx_shortage_status ON stock_shortage_requests(status);
 CREATE INDEX IF NOT EXISTS idx_shortage_dept ON stock_shortage_requests(department);
+
+
+-- ============================================================
+-- SYSTEM SUBSCRIPTION & LICENSE MANAGEMENT
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS system_subscription (
+    id SERIAL PRIMARY KEY,
+    client_name VARCHAR(150) DEFAULT 'Kasina Hotel',
+    is_active BOOLEAN DEFAULT TRUE,
+    start_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    grace_days INTEGER DEFAULT 3,
+    last_renewed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

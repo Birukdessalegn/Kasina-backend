@@ -1,3 +1,4 @@
+const { createNotification } = require("../notifications/notifications.service");
 const pool = require("../../config/database");
 
 let backUrlColumnEnsured = false;
@@ -822,11 +823,120 @@ const getReservationReports = async ({ startDate, endDate } = {}) => {
   };
 };
 
+
+/**
+ * Amend / edit room reservation price (special guest rate)
+ * Recalculates total_amount and immediately notifies Admin and Finance with reason.
+ */
+const amendReservationPrice = async (id, { rate_per_night, reason }, userId) => {
+  if (rate_per_night === undefined || isNaN(Number(rate_per_night)) || Number(rate_per_night) < 0) {
+    throw new Error("Please enter a valid rate per night.");
+  }
+  if (!reason || !reason.trim()) {
+    throw new Error("Reason for price amendment is required.");
+  }
+
+  // Ensure columns exist
+  await pool.query(`
+    ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS original_rate_per_night NUMERIC(12,2);
+    ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS price_amendment_reason TEXT;
+    ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS price_amended_by UUID;
+    ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS price_amended_at TIMESTAMP;
+  `);
+
+  // 1. Fetch existing reservation with room number
+  const checkRes = await pool.query(
+    `SELECT rr.*, r.room_number, r.type_name as room_type_name
+     FROM room_reservations rr
+     JOIN rooms r ON rr.room_id = r.id
+     WHERE rr.id = $1`,
+    [id]
+  );
+  if (checkRes.rows.length === 0) {
+    throw new Error("Reservation not found.");
+  }
+  const existing = checkRes.rows[0];
+
+  // 2. Fetch staff member name who is making the amendment
+  let staffName = "Reception Staff";
+  if (userId) {
+    const userRes = await pool.query(`SELECT name, username FROM users WHERE id = $1`, [userId]);
+    if (userRes.rows.length > 0) {
+      staffName = userRes.rows[0].name || userRes.rows[0].username || "Reception Staff";
+    }
+  }
+
+  const oldRate = Number(existing.rate_per_night || 0);
+  const newRate = Number(rate_per_night);
+  const totalNights = Math.max(1, Number(existing.total_nights || 1));
+  const newTotal = Number((newRate * totalNights).toFixed(2));
+  const paidAmount = Number(existing.paid_amount || 0);
+
+  let newPaymentStatus = "unpaid";
+  if (paidAmount >= newTotal && newTotal > 0) {
+    newPaymentStatus = "paid";
+  } else if (paidAmount > 0) {
+    newPaymentStatus = "partial";
+  }
+
+  // 3. Update reservation
+  const updateRes = await pool.query(
+    `UPDATE room_reservations
+     SET 
+       rate_per_night = $1,
+       total_amount = $2,
+       payment_status = $3,
+       original_rate_per_night = COALESCE(original_rate_per_night, $4),
+       price_amendment_reason = $5,
+       price_amended_by = $6,
+       price_amended_at = NOW(),
+       updated_at = NOW()
+     WHERE id = $7
+     RETURNING *`,
+    [
+      newRate,
+      newTotal,
+      newPaymentStatus,
+      oldRate,
+      reason.trim(),
+      userId || null,
+      id
+    ]
+  );
+
+  const updated = updateRes.rows[0];
+
+  // 4. Broadcast automated notification to Admin and Finance
+  const diff = newRate - oldRate;
+  const diffText = diff > 0 ? `+${diff.toLocaleString()} ETB` : `${diff.toLocaleString()} ETB`;
+
+  await createNotification({
+    targetRoles: ["admin", "finance", "accountant_manager", "manager", "hotel_manager"],
+    title: `Room Price Amended - Room #${existing.room_number}`,
+    message: `Room #${existing.room_number} (${existing.guest_name || "Guest"}) rate changed from ${oldRate.toLocaleString()} to ${newRate.toLocaleString()} ETB/night (${diffText}, New Total: ${newTotal.toLocaleString()} ETB) by ${staffName}. Reason: "${reason.trim()}"`,
+    type: "warning",
+    referenceType: "room_price_amendment",
+    referenceId: id,
+  });
+
+  return {
+    ...updated,
+    room_number: existing.room_number,
+    room_type_name: existing.room_type_name,
+    oldRate,
+    newRate,
+    diff,
+    staffName,
+  };
+};
+
+
 module.exports = {
   getAllReservations,
   getReservationById,
   createReservation,
   updateReservation,
+  amendReservationPrice,
   updateGuestIdImage,
   checkInReservation,
   addPayment,
