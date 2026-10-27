@@ -844,11 +844,12 @@ const amendReservationPrice = async (id, { rate_per_night, reason }, userId) => 
     ALTER TABLE room_reservations ADD COLUMN IF NOT EXISTS price_amended_at TIMESTAMP;
   `);
 
-  // 1. Fetch existing reservation with room number
+  // 1. Fetch existing reservation with room number and room type
   const checkRes = await pool.query(
-    `SELECT rr.*, r.room_number, r.type_name as room_type_name
+    `SELECT rr.*, r.room_number, rt.name AS room_type_name
      FROM room_reservations rr
      JOIN rooms r ON rr.room_id = r.id
+     LEFT JOIN room_types rt ON r.room_type_id = rt.id
      WHERE rr.id = $1`,
     [id]
   );
