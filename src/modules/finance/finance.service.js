@@ -220,42 +220,62 @@ const getFinanceOverview = async (filters = {}) => {
     return { clause: "", params: [] };
   };
 
-  // 1. Room Revenue Aggregation
+  // 1. Room Revenue Aggregation (from room_reservations)
   const roomDate = buildDateCondition("COALESCE(actual_check_in_at, check_in_date, created_at)");
   const roomSql = `
     SELECT 
       COALESCE(SUM(paid_amount), 0)::float AS total_paid,
       COALESCE(SUM(CASE WHEN payment_status = 'unpaid' THEN total_amount ELSE GREATEST(0, total_amount - paid_amount) END), 0)::float AS total_unpaid,
       COUNT(id)::int AS total_reservations,
-      COUNT(CASE WHEN status = 'checked_in' THEN 1 END)::int AS active_checked_in,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, 'cash')) = 'cash' THEN paid_amount ELSE 0 END), 0)::float AS cash_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('telebirr', 'tele_birr') THEN paid_amount ELSE 0 END), 0)::float AS telebirr_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('cbe_birr', 'cbebirr', 'cbe') THEN paid_amount ELSE 0 END), 0)::float AS cbe_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('card', 'pos', 'visa', 'mastercard') THEN paid_amount ELSE 0 END), 0)::float AS card_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('bank_transfer', 'bank', 'transfer') THEN paid_amount ELSE 0 END), 0)::float AS bank_paid
+      COUNT(CASE WHEN status = 'checked_in' THEN 1 END)::int AS active_checked_in
     FROM room_reservations
     WHERE status != 'cancelled' ${roomDate.clause}
   `;
   const roomRes = await pool.query(roomSql, roomDate.params);
   const roomData = roomRes.rows[0] || {};
 
-  // 2. F&B / POS Orders Revenue Aggregation
+  // 2. F&B / POS Orders Revenue Aggregation (from orders)
   const orderDate = buildDateCondition("created_at");
   const orderSql = `
     SELECT 
       COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE COALESCE(paid_amount, 0) END), 0)::float AS total_paid,
       COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN (total_amount - COALESCE(paid_amount, 0)) ELSE 0 END), 0)::float AS total_unpaid,
-      COUNT(id)::int AS total_orders,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, 'cash')) = 'cash' THEN total_amount ELSE 0 END), 0)::float AS cash_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('telebirr', 'tele_birr') THEN total_amount ELSE 0 END), 0)::float AS telebirr_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('cbe_birr', 'cbebirr', 'cbe') THEN total_amount ELSE 0 END), 0)::float AS cbe_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('card', 'pos', 'visa') THEN total_amount ELSE 0 END), 0)::float AS card_paid,
-      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('bank_transfer', 'bank') THEN total_amount ELSE 0 END), 0)::float AS bank_paid
+      COUNT(id)::int AS total_orders
     FROM orders
     WHERE status != 'cancelled' ${orderDate.clause}
   `;
   const orderRes = await pool.query(orderSql, orderDate.params);
   const orderData = orderRes.rows[0] || {};
+
+  // 2b. Room Payments Breakdown (from room_payments table)
+  const roomPayDate = buildDateCondition("created_at");
+  const roomPaySql = `
+    SELECT 
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, 'cash')) = 'cash' THEN amount ELSE 0 END), 0)::float AS cash_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('telebirr', 'tele_birr') THEN amount ELSE 0 END), 0)::float AS telebirr_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('cbe_birr', 'cbebirr', 'cbe') THEN amount ELSE 0 END), 0)::float AS cbe_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('card', 'pos', 'visa', 'mastercard') THEN amount ELSE 0 END), 0)::float AS card_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('bank_transfer', 'bank', 'transfer') THEN amount ELSE 0 END), 0)::float AS bank_paid
+    FROM room_payments
+    WHERE 1=1 ${roomPayDate.clause}
+  `;
+  const roomPayRes = await pool.query(roomPaySql, roomPayDate.params).catch(() => ({ rows: [{}] }));
+  const roomPayData = roomPayRes.rows[0] || {};
+
+  // 2c. Order / POS Payments Breakdown (from payments table)
+  const posPayDate = buildDateCondition("COALESCE(paid_at, created_at)");
+  const posPaySql = `
+    SELECT 
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, 'cash')) = 'cash' THEN amount ELSE 0 END), 0)::float AS cash_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('telebirr', 'tele_birr') THEN amount ELSE 0 END), 0)::float AS telebirr_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('cbe_birr', 'cbebirr', 'cbe') THEN amount ELSE 0 END), 0)::float AS cbe_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('card', 'pos', 'visa') THEN amount ELSE 0 END), 0)::float AS card_paid,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(payment_method, '')) IN ('bank_transfer', 'bank') THEN amount ELSE 0 END), 0)::float AS bank_paid
+    FROM payments
+    WHERE status = 'paid' ${posPayDate.clause}
+  `;
+  const posPayRes = await pool.query(posPaySql, posPayDate.params).catch(() => ({ rows: [{}] }));
+  const posPayData = posPayRes.rows[0] || {};
 
   // 3. Expenses Aggregation
   const expDate = buildDateCondition("COALESCE(expense_date, created_at)");
@@ -308,11 +328,11 @@ const getFinanceOverview = async (filters = {}) => {
   const profitMargin = totalRevenue > 0 ? parseFloat(((netOperatingIncome / totalRevenue) * 100).toFixed(1)) : 0;
 
   const paymentMethods = {
-    cash: (roomData.cash_paid || 0) + (orderData.cash_paid || 0),
-    telebirr: (roomData.telebirr_paid || 0) + (orderData.telebirr_paid || 0),
-    cbeBirr: (roomData.cbe_paid || 0) + (orderData.cbe_paid || 0),
-    card: (roomData.card_paid || 0) + (orderData.card_paid || 0),
-    bankTransfer: (roomData.bank_paid || 0) + (orderData.bank_paid || 0),
+    cash: (roomPayData.cash_paid || 0) + (posPayData.cash_paid || 0),
+    telebirr: (roomPayData.telebirr_paid || 0) + (posPayData.telebirr_paid || 0),
+    cbeBirr: (roomPayData.cbe_paid || 0) + (posPayData.cbe_paid || 0),
+    card: (roomPayData.card_paid || 0) + (posPayData.card_paid || 0),
+    bankTransfer: (roomPayData.bank_paid || 0) + (posPayData.bank_paid || 0),
   };
 
   return {
