@@ -26,6 +26,7 @@ const recipesRoutes = require("./modules/recipes/recipes.routes");
 const housekeepingRoutes = require("./modules/housekeeping/housekeeping.routes");
 // const payrollRoutes = require("./modules/payroll/payroll.routes");
 const paymentAccountsRoutes = require("./modules/payment_accounts/payment_accounts.routes");
+const subscriptionRoutes = require("./modules/subscription/subscription.routes");
 
 const app = express();
 
@@ -114,6 +115,7 @@ app.use("/api/recipes", recipesRoutes);
 app.use("/api/housekeeping", housekeepingRoutes);
 // app.use("/api/payroll", payrollRoutes);
 app.use("/api/payment-accounts", paymentAccountsRoutes);
+app.use("/api/subscription", subscriptionRoutes);
 
 // Test route
 app.get("/", (req, res) => {

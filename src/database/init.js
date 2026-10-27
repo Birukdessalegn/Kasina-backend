@@ -1,4 +1,5 @@
 const pool = require("../config/database");
+const { initializeSubscriptionTable } = require("../modules/subscription/subscription.service");
 
 const initializeDatabase = async () => {
   try {
@@ -190,6 +191,7 @@ const initializeDatabase = async () => {
         END $$;
       `);
       console.log("✅ Database schema verified and legacy table columns synchronized");
+      await initializeSubscriptionTable();
     } catch (colErr) {
       console.warn("⚠️ Non-critical schema sync warning (server will continue running):", colErr.message);
     }
